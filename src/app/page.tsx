@@ -76,6 +76,12 @@ type PokemonOfDay = {
   types: string[];
 };
 
+type PokemonOfDayArticle = {
+  title: string;
+  link: string;
+  source: string;
+};
+
 // Revalidate the server-rendered homepage every 30 minutes.
 export const revalidate = 1800;
 
@@ -873,6 +879,34 @@ async function fetchPokemonOfDay(): Promise<PokemonOfDay | null> {
   }
 }
 
+function pickPokemonOfDayArticle(
+  items: NewsItem[],
+  pokemon: PokemonOfDay | null,
+): PokemonOfDayArticle | null {
+  if (!pokemon || items.length === 0) return null;
+  const name = normalize(pokemon.name);
+  const typeTokens = pokemon.types.map((type) => normalize(type));
+
+  const ranked = items
+    .map((item) => {
+      const title = normalize(item.title);
+      let relevance = 0;
+      if (title.includes(name)) relevance += 8;
+      if (title.includes("pokemon")) relevance += 2;
+      if (title.includes("reveal") || title.includes("announcement") || title.includes("direct")) {
+        relevance += 2;
+      }
+      relevance += typeTokens.filter((token) => title.includes(token)).length;
+      relevance += 1 / Math.max(1, hoursAgo(item.pubDate));
+      return { item, relevance };
+    })
+    .sort((a, b) => b.relevance - a.relevance);
+
+  const best = ranked[0]?.item;
+  if (!best) return null;
+  return { title: best.title, link: best.link, source: best.source };
+}
+
 // Build the initial calendar payload for "today" so it renders immediately on first load.
 function buildTodayCalendarStats(items: NewsItem[], liveHypeScore: number): CalendarDayStats {
   const today = new Date().toISOString().slice(0, 10);
@@ -1075,6 +1109,7 @@ export default async function Home() {
   const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score);
   const liveEventSignals = extractLiveEventSignals(items);
   const pokemonOfDay = await fetchPokemonOfDay();
+  const pokemonOfDayArticle = pickPokemonOfDayArticle(items, pokemonOfDay);
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -1130,7 +1165,19 @@ export default async function Home() {
                 <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
               </div>
               {pokemonOfDay ? (
-                <div className="rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:min-w-64">
+                <a
+                  href={pokemonOfDayArticle?.link ?? "#"}
+                  target={pokemonOfDayArticle ? "_blank" : undefined}
+                  rel={pokemonOfDayArticle ? "noreferrer" : undefined}
+                  className={`block rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:min-w-64 ${
+                    pokemonOfDayArticle ? "hover:border-cyan-300/50" : "pointer-events-none"
+                  }`}
+                  title={
+                    pokemonOfDayArticle
+                      ? `Read today's spotlight article from ${pokemonOfDayArticle.source}`
+                      : "No matching article found today"
+                  }
+                >
                   <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
                     Pokemon Of The Day
                   </p>
@@ -1163,9 +1210,18 @@ export default async function Home() {
                           </span>
                         ))}
                       </div>
+                      {pokemonOfDayArticle ? (
+                        <p className="mt-1 text-[10px] text-cyan-300/90">
+                          Read today&apos;s spotlight article →
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          Spotlight article unavailable for today.
+                        </p>
+                      )}
                     </div>
                   </div>
-                </div>
+                </a>
               ) : null}
             </div>
           </header>
