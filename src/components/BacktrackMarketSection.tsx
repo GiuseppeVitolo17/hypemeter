@@ -122,7 +122,16 @@ export default function BacktrackMarketSection({ history, events, marketOverlay,
           </div>
 
           <p className="mt-4 text-[11px] text-slate-500">
-            Source: Yahoo Finance (quotes + monthly history overlay); fallback: Stooq + CoinGecko
+            Quotes match{" "}
+            <a
+              href="https://finance.yahoo.com/quote/NTDOY/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400/90 underline-offset-2 hover:underline"
+            >
+              Yahoo Finance NTDOY
+            </a>{" "}
+            (OTC can be delayed). Monthly overlay for chart; fallback: Stooq + CoinGecko.
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
             Last market update: {market.updatedAt ?? "Unavailable"}

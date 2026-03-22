@@ -2,6 +2,9 @@
  * Yearly Yahoo Finance monthly closes → normalized 0–100 series for the hype chart overlay.
  */
 
+const YAHOO_CHART_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 export type MarketHighlightKey = "sp500" | "btc" | "nintendo";
 
 export type MarketYearlyOverlay = {
@@ -18,7 +21,7 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=max`;
     const res = await fetch(url, {
       next: { revalidate: 3600 },
-      headers: { "user-agent": "Mozilla/5.0 hypemeter" },
+      headers: { "user-agent": YAHOO_CHART_UA },
     });
     if (!res.ok) return map;
     const json = (await res.json()) as {

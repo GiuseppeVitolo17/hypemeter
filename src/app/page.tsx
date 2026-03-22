@@ -111,6 +111,12 @@ const NEWS_QUERY = encodeURIComponent(
 const NEWS_URL = `https://news.google.com/rss/search?q=${NEWS_QUERY}&hl=en-US&gl=US&ceid=US:en`;
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD,NTDOY";
+/** Dedicated NTDOY quote (same feed as finance.yahoo.com/quote/NTDOY) — batch responses sometimes omit OTC fields. */
+const YAHOO_QUOTE_NTDY_ONLY =
+  "https://query1.finance.yahoo.com/v7/finance/quote?symbols=NTDOY";
+/** Browser-like UA avoids empty quoteResponse for some Yahoo symbols. */
+const YAHOO_FINANCE_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
 const STOOQ_BTC_URL = "https://stooq.com/q/l/?s=btcusd&i=d";
 /** Nintendo ADR (US OTC) — Stooq daily line. */
@@ -1867,19 +1873,28 @@ type YahooFinanceQuoteBundle = {
       regularMarketChangePercent?: number;
       regularMarketPreviousClose?: number;
       postMarketPrice?: number;
+      preMarketPrice?: number;
     }>;
   };
 };
 
+function findYahooQuoteEntry(data: YahooFinanceQuoteBundle, symbol: string) {
+  const want = symbol.toUpperCase();
+  return data.quoteResponse?.result?.find((e) => e.symbol?.toUpperCase() === want);
+}
+
+/**
+ * Aligns with Yahoo Finance quote page: last price, previous close, % change.
+ * Do not use previous close as the last price (that inflated “level” vs the site).
+ */
 function parseYahooSymbol(
   data: YahooFinanceQuoteBundle,
   symbol: string,
 ): { price: number | null; growthPct: number | null; previousClose: number | null } {
-  const entry = data.quoteResponse?.result?.find((e) => e.symbol === symbol);
+  const entry = findYahooQuoteEntry(data, symbol);
   const prevClose = entry?.regularMarketPreviousClose;
   const rawPrice =
-    entry?.regularMarketPrice ?? entry?.postMarketPrice ?? prevClose ?? undefined;
-  const growthPct = entry?.regularMarketChangePercent;
+    entry?.regularMarketPrice ?? entry?.postMarketPrice ?? entry?.preMarketPrice ?? undefined;
   const price =
     rawPrice !== undefined && rawPrice !== null && !Number.isNaN(Number(rawPrice))
       ? Number(rawPrice)
@@ -1888,14 +1903,34 @@ function parseYahooSymbol(
     prevClose !== undefined && prevClose !== null && !Number.isNaN(Number(prevClose))
       ? Number(prevClose)
       : null;
+  let growthPct =
+    entry?.regularMarketChangePercent !== undefined &&
+    entry?.regularMarketChangePercent !== null &&
+    !Number.isNaN(Number(entry.regularMarketChangePercent))
+      ? Number(entry.regularMarketChangePercent)
+      : null;
+  if (
+    growthPct === null &&
+    price !== null &&
+    previousClose !== null &&
+    previousClose > 0
+  ) {
+    growthPct = ((price - previousClose) / previousClose) * 100;
+  }
   return {
     price,
-    growthPct:
-      growthPct !== undefined && growthPct !== null && !Number.isNaN(Number(growthPct))
-        ? Number(growthPct)
-        : null,
+    growthPct,
     previousClose,
   };
+}
+
+function mergeNtdyQuotes(
+  dedicated: YahooFinanceQuoteBundle,
+  batch: YahooFinanceQuoteBundle,
+): ReturnType<typeof parseYahooSymbol> {
+  const a = parseYahooSymbol(dedicated, "NTDOY");
+  if (a.price !== null || a.previousClose !== null) return a;
+  return parseYahooSymbol(batch, "NTDOY");
 }
 
 /** Last two daily closes from Yahoo v8 chart (skips nulls — weekends/holidays). */
@@ -1926,7 +1961,7 @@ async function fetchNintendoFromYahooChart(): Promise<{
   try {
     const res = await fetch(YAHOO_CHART_NTDY_URL, {
       next: { revalidate: 900 },
-      headers: { "user-agent": "Mozilla/5.0 hypemeter" },
+      headers: { "user-agent": YAHOO_FINANCE_UA },
     });
     if (!res.ok) return { price: null, previousClose: null, growthPct: null };
     const json = await res.json();
@@ -1976,14 +2011,16 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     });
 
   try {
-    const [spRes, btcRes, yahooRes] = await Promise.all([
+    const [spRes, btcRes, yahooRes, ntdyQuoteRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
       fetch(MARKET_QUOTES_URL, {
         next: { revalidate: 300 },
-        headers: {
-          "user-agent": "Mozilla/5.0 hypemeter",
-        },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_NTDY_ONLY, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
     ]);
     const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
@@ -1991,7 +2028,10 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooData = yahooRes.ok
       ? ((await yahooRes.json()) as YahooFinanceQuoteBundle)
       : {};
-    const yahooNtdy = parseYahooSymbol(yahooData, "NTDOY");
+    const ntdyDedicated = ntdyQuoteRes.ok
+      ? ((await ntdyQuoteRes.json()) as YahooFinanceQuoteBundle)
+      : {};
+    const yahooNtdy = mergeNtdyQuotes(ntdyDedicated, yahooData);
     let nintendo = yahooNtdy.price;
     let nintendoGrowthPct = yahooNtdy.growthPct;
     let nintendoPreviousClose = yahooNtdy.previousClose;
@@ -2028,14 +2068,16 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   }
 
   try {
-    const [spRes, btcRes, yahooRes] = await Promise.all([
+    const [spRes, btcRes, yahooRes, ntdyQuoteRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
       fetch(MARKET_QUOTES_URL, {
         next: { revalidate: 300 },
-        headers: {
-          "user-agent": "Mozilla/5.0 hypemeter",
-        },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_NTDY_ONLY, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
     ]);
     const spText = spRes.ok ? await spRes.text() : "";
@@ -2045,10 +2087,13 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooData = yahooRes.ok
       ? ((await yahooRes.json()) as YahooFinanceQuoteBundle)
       : {};
+    const ntdyDedicated = ntdyQuoteRes.ok
+      ? ((await ntdyQuoteRes.json()) as YahooFinanceQuoteBundle)
+      : {};
     const spx = parseStooqMetrics(spText);
     const sp500 = spx.close;
     const yahooBtc = parseYahooSymbol(yahooData, "BTC-USD");
-    const yahooNtdy = parseYahooSymbol(yahooData, "NTDOY");
+    const yahooNtdy = mergeNtdyQuotes(ntdyDedicated, yahooData);
     const bitcoin = btcData.bitcoin?.usd ?? yahooBtc.price;
     let nintendo = yahooNtdy.price;
     let nintendoGrowthPct = yahooNtdy.growthPct;
