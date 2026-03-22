@@ -121,6 +121,26 @@ const LIVE_EVENT_SIGNAL_PATTERNS: Array<{ label: string; group: string; weight: 
   { label: "Pokemon Day / Worlds", group: "event", weight: 2.2, regex: /\bpok[eé]mon day|worlds|championship\b/i },
   { label: "Demand Spike", group: "pressure", weight: 1.8, regex: /\bsold out|out of stock|pre-?order|queue|allocation\b/i },
   { label: "Supply Stress", group: "pressure", weight: 1.4, regex: /\breprint|restock|scarcity|shortage\b/i },
+  { label: "Gameplay Footage", group: "event", weight: 1.9, regex: /\bgameplay|hands-on|preview\b/i },
+  { label: "New Region / Gen", group: "event", weight: 2, regex: /\bnew region|generation|gen\s?\d+|starter\b/i },
+  { label: "Legendary / Mythic Focus", group: "event", weight: 1.6, regex: /\blegendary|mythical\b/i },
+  { label: "TCG Set Momentum", group: "market", weight: 1.7, regex: /\btcg|booster box|elite trainer box|etb|set list\b/i },
+  { label: "Mobile / GO Wave", group: "community", weight: 1.5, regex: /\bpokemon go|mobile|event bonus|raid\b/i },
+  { label: "Competitive Circuit", group: "community", weight: 1.5, regex: /\bvgc|regional|world championship|tournament\b/i },
+  { label: "Community Volatility", group: "sentiment", weight: 1.4, regex: /\bcontroversy|backlash|debate|mixed reactions\b/i },
+];
+
+const CONTEXTUAL_SIGNAL_PATTERNS: Array<{
+  label: string;
+  group: string;
+  baseWeight: number;
+  regex: RegExp;
+}> = [
+  { label: "Multiple Reveal Headlines", group: "event", baseWeight: 1.9, regex: /\breveal|announc(e|ed|ement)|trailer\b/i },
+  { label: "New Games Mentioned", group: "event", baseWeight: 2.4, regex: /\bnew game|new games|new title|legends|gen\s?\d+\b/i },
+  { label: "Release Timing Chatter", group: "event", baseWeight: 1.8, regex: /\brelease date|coming soon|launch window|drops\b/i },
+  { label: "High TCG Activity", group: "market", baseWeight: 1.6, regex: /\btcg|booster|set|card market\b/i },
+  { label: "Community Buzz Spike", group: "community", baseWeight: 1.5, regex: /\bhype|massive|viral|trending\b/i },
 ];
 
 const timelineEventSignals: TimelineEventSignal[] = [
@@ -196,16 +216,40 @@ function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function extractLiveEventSignals(items: NewsItem[], limit = 8) {
-  const text = items.map((item) => item.title).join(" | ");
-  return LIVE_EVENT_SIGNAL_PATTERNS.filter((signal) => signal.regex.test(text))
+function extractLiveEventSignals(items: NewsItem[], limit = 12) {
+  const titles = items.map((item) => item.title);
+  const text = titles.join(" | ");
+  const directSignals = LIVE_EVENT_SIGNAL_PATTERNS.filter((signal) => signal.regex.test(text))
     .sort((a, b) => b.weight - a.weight)
-    .slice(0, limit)
     .map((signal) => ({
       label: signal.label,
       group: signal.group,
       weight: signal.weight,
     }));
+
+  const contextualSignals = CONTEXTUAL_SIGNAL_PATTERNS.map((pattern) => {
+    const hits = titles.reduce((sum, title) => sum + (pattern.regex.test(title) ? 1 : 0), 0);
+    if (hits === 0) return null;
+    return {
+      label: hits >= 2 ? `${pattern.label} x${hits}` : pattern.label,
+      group: pattern.group,
+      weight: pattern.baseWeight + Math.min(2, (hits - 1) * 0.45),
+    };
+  }).filter((signal): signal is { label: string; group: string; weight: number } => Boolean(signal));
+
+  const merged = [...directSignals, ...contextualSignals];
+  const deduped = new Map<string, { label: string; group: string; weight: number }>();
+  for (const signal of merged) {
+    const key = `${signal.group}:${signal.label}`;
+    const existing = deduped.get(key);
+    if (!existing || signal.weight > existing.weight) {
+      deduped.set(key, signal);
+    }
+  }
+
+  return Array.from(deduped.values())
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, limit);
 }
 
 // Filter out low-signal commerce spam and noisy listing-style headlines.
