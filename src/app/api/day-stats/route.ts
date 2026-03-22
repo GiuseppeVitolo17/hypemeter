@@ -70,7 +70,8 @@ function parseNews(xml: string): NewsItem[] {
     const title = decodeHtml(readTag(block, "title"));
     const link = decodeHtml(readTag(block, "link"));
     const pubDate = decodeHtml(readTag(block, "pubDate"));
-    const source = decodeHtml(readTag(block, "source")) || "Unknown";
+    const sourceTag = decodeHtml(readTag(block, "source"));
+    const source = sourceTag || extractSourceFromTitle(title);
     if (title && link) {
       items.push({ title, link, pubDate, source });
     }
@@ -81,6 +82,16 @@ function parseNews(xml: string): NewsItem[] {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalize(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function extractSourceFromTitle(title: string) {
+  const chunks = title.split(" - ");
+  if (chunks.length < 2) return "Unknown";
+  return chunks[chunks.length - 1].trim();
 }
 
 function weightedTokenHitsAcrossItems(items: NewsItem[], tokens: WeightedSignal[]) {
@@ -142,7 +153,14 @@ function computeStats(items: NewsItem[]) {
   const negativeHits = weightedTokenHitsAcrossItems(items, NEGATIVE_TOKENS);
 
   const headlineCount = items.length;
-  const uniqueSources = new Set(items.map((item) => item.source)).size;
+  const sourceCounts = new Map<string, number>();
+  for (const item of items) {
+    const key = normalize(item.source || "Unknown");
+    sourceCounts.set(key, (sourceCounts.get(key) ?? 0) + 1);
+  }
+  const uniqueSources = sourceCounts.size;
+  const maxSourceShare =
+    headlineCount > 0 ? Math.max(...Array.from(sourceCounts.values())) / headlineCount : 1;
   const attentionScore = clamp(
     (Math.log10(headlineCount + 1) / Math.log10(26)) * 72 + (uniqueSources / 12) * 28,
     0,
@@ -173,7 +191,12 @@ function computeStats(items: NewsItem[]) {
     (hasFlagshipBroadcast ? 14 : 0) +
     (hasMajorGameReveal ? 12 : 0) +
     Math.max(0, eventCatalystScore - 65) * 0.35;
-  const sourcePenalty = uniqueSources <= 1 ? 4 : 0;
+  const sourcePenalty = uniqueSources <= 1 ? 10 : uniqueSources <= 2 ? 6 : 0;
+  const coverageConfidence = clamp(
+    (headlineCount / 20) * 0.6 + (uniqueSources / 10) * 0.4 - Math.max(0, maxSourceShare - 0.55) * 0.35,
+    0.18,
+    1,
+  );
   const eventSignals = collectSignals(text, [
     { group: "event", tokens: EVENT_TOKENS },
     { group: "pressure", tokens: PRESSURE_TOKENS },
@@ -194,7 +217,9 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
-  const dayScore = clamp(Math.round(baseScore + catalystShock - sourcePenalty), 0, 100);
+  const adjustedScore =
+    baseScore * coverageConfidence + catalystShock * (0.45 + coverageConfidence * 0.55) - sourcePenalty;
+  const dayScore = clamp(Math.round(adjustedScore), 0, 100);
   const sentiment = Math.round(communitySentimentScore);
 
   return {
