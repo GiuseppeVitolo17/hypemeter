@@ -5,6 +5,7 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
+import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import Image from "next/image";
 import { unstable_noStore as noStore } from "next/cache";
 
@@ -94,7 +95,10 @@ type CardTraderBestSeller = {
 // Always render dynamically so the market sidecar (and other live fetches) never come from stale ISR HTML.
 export const dynamic = "force-dynamic";
 
-/** Enough wall time for parallel RSS + Yahoo/Stooq/FRED on cold start (Vercel serverless). */
+/**
+ * Pro/Enterprise: up to 60s. **Vercel Hobby caps serverless at ~10s** — keep upstream work bounded
+ * (timeouts + parallel fetches) or upgrade / use Edge Pro.
+ */
 export const maxDuration = 60;
 
 // Curated Google News query tuned for Pokemon relevance and noise reduction.
@@ -631,8 +635,11 @@ async function fetchRedditTraffic() {
   let today = 0;
   let yesterday = 0;
   const urls = [REDDIT_TCG_URL, REDDIT_CARDS_URL, "https://www.reddit.com/r/pokemon/hot.json?limit=40"];
-  for (const url of urls) {
-    const res = await fetchWithTimeout(url, { next: { revalidate: 600 }, timeoutMs: 7000 });
+  /** Parallel: sequential was up to ~21s (3×7s) and blew Vercel Hobby’s ~10s function cap. */
+  const results = await Promise.all(
+    urls.map((url) => fetchWithTimeout(url, { next: { revalidate: 600 }, timeoutMs: 7000 })),
+  );
+  for (const res of results) {
     if (!res?.ok) continue;
     const payload = (await res.json().catch(() => null)) as
       | {
@@ -784,10 +791,10 @@ function buildSocialFallbackFromItems(items: NewsItem[], searchStats: SearchInte
 async function fetchSocialTrafficSnapshot(searchStats: SearchInterestStats, items: NewsItem[]) {
   const fallback = buildSocialFallbackFromItems(items, searchStats);
   const [reddit, youtube, facebook, threads] = await Promise.all([
-    fetchRedditTraffic(),
-    fetchYouTubeTraffic(),
-    fetchFacebookTraffic(),
-    fetchThreadsTraffic(),
+    timedAsync("social:reddit", () => fetchRedditTraffic()),
+    timedAsync("social:youtube", () => fetchYouTubeTraffic()),
+    timedAsync("social:facebook+jina", () => fetchFacebookTraffic()),
+    timedAsync("social:threads+jina", () => fetchThreadsTraffic()),
   ]);
 
   const merged = {
@@ -852,8 +859,11 @@ async function fetchSearchInterestStats(items: NewsItem[] = []): Promise<SearchI
   const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   try {
-    const response = await fetch(GOOGLE_TRENDS_DAILY_RSS, { next: { revalidate: 900 } });
-    if (!response.ok) {
+    const response = await fetchWithTimeout(GOOGLE_TRENDS_DAILY_RSS, {
+      next: { revalidate: 900 },
+      timeoutMs: 8000,
+    });
+    if (!response?.ok) {
       return {
         score: fallbackFromNews(),
         todayTraffic: 0,
@@ -1840,6 +1850,7 @@ function buildTodayCalendarStats(
 
 export default async function Home() {
   noStore();
+  const homeWallStart = performance.now();
   // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
   let searchStats: SearchInterestStats = { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
@@ -1856,30 +1867,34 @@ export default async function Home() {
   let eventCatalyst = 40;
   let communitySentiment = 50;
   try {
-    const response = await fetch(NEWS_URL, {
-      next: { revalidate: 300 },
-      headers: {
-        "user-agent": "Mozilla/5.0 hypemeter",
-      },
-    });
-    if (response.ok) {
+    await timedAsync("home:googleNewsRss", async () => {
+      const response = await fetchWithTimeout(NEWS_URL, {
+        next: { revalidate: 300 },
+        headers: {
+          "user-agent": "Mozilla/5.0 hypemeter",
+        },
+        timeoutMs: 10_000,
+      });
+      if (!response?.ok) throw new Error("news fetch failed");
       const xml = await response.text();
       items = curateNewsItems(parseNews(xml)).slice(0, 28);
-    }
+    });
   } catch {
     items = [];
   }
 
-  const market = await fetchMarketSnapshot();
+  const market = await timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot());
 
   // Pull independent external signals in parallel to minimize latency.
   [searchStats, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
-    fetchSearchInterestStats(items),
-    fetchMarketMomentumScore(market),
-    fetchEventCatalystScore(),
-    fetchCommunitySentimentScore(),
+    timedAsync("home:fetchSearchInterestStats", () => fetchSearchInterestStats(items)),
+    timedAsync("home:fetchMarketMomentumScore", () => fetchMarketMomentumScore(market)),
+    timedAsync("home:fetchEventCatalystScore", () => fetchEventCatalystScore()),
+    timedAsync("home:fetchCommunitySentimentScore", () => fetchCommunitySentimentScore()),
   ]);
-  socialTraffic = await fetchSocialTrafficSnapshot(searchStats, items);
+  socialTraffic = await timedAsync("home:fetchSocialTrafficSnapshot", () =>
+    fetchSocialTrafficSnapshot(searchStats, items),
+  );
   const socialPulse = computeSocialPulseStats(socialTraffic);
   searchInterest = searchStats.score;
 
@@ -1900,7 +1915,13 @@ export default async function Home() {
     socialPulseScore: socialPulse.aggregateScore,
   });
   const history = buildBacktrackSeries(score);
-  const marketOverlay = await fetchMarketYearlyOverlay(history.map((h) => h.year));
+  const [marketOverlay, pokemonCatalog, cardTraderBestSeller] = await Promise.all([
+    timedAsync("home:fetchMarketYearlyOverlay", () =>
+      fetchMarketYearlyOverlay(history.map((h) => h.year)),
+    ),
+    timedAsync("home:fetchPokemonNameCatalog", () => fetchPokemonNameCatalog()),
+    timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
+  ]);
   const todayCalendarStats = buildTodayCalendarStats(
     items.slice(0, 20),
     score,
@@ -1970,10 +1991,9 @@ export default async function Home() {
       barPct: socialMomentumBarPct(deltaPct),
     };
   });
-  const pokemonCatalog = await fetchPokemonNameCatalog();
-  const { pokemon: pokemonOfDay, winnerSlug: pokemonOfDayWinnerSlug } = await resolvePokemonOfDay(
-    items,
-    pokemonCatalog,
+  const { pokemon: pokemonOfDay, winnerSlug: pokemonOfDayWinnerSlug } = await timedAsync(
+    "home:resolvePokemonOfDay",
+    () => resolvePokemonOfDay(items, pokemonCatalog),
   );
   const pokemonOfDayArticle =
     pokemonOfDayWinnerSlug && items.length > 0
@@ -1985,7 +2005,6 @@ export default async function Home() {
     signalQuality: liveSignalQuality,
     components: indicators,
   });
-  const cardTraderBestSeller = await fetchCardTraderPokemonBestSeller();
 
   // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
@@ -2014,6 +2033,8 @@ export default async function Home() {
     ],
     dateModified: new Date().toISOString(),
   };
+
+  logTimingTotal("home:totalWallTime", performance.now() - homeWallStart);
 
   return (
     <main className="relative min-h-screen min-w-0 max-w-full overflow-x-clip bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">

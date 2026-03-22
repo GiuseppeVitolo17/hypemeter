@@ -2,12 +2,12 @@
 
 Past years use **`src/data/staticCpiYoYByYear.json`** (regenerate yearly: `node scripts/generate-static-cpi-yojson.mjs`).
 
-The **last two calendar years** (`cy−1`, `cy`) are refreshed live (revisions + new year); older years stay in the JSON.
+Only **years on the hype chart** (the backtrack x-axis) are loaded from the JSON. **Live** refresh runs **only** for `cy−1` and `cy` **when those years are on the chart** — otherwise no CPI network calls (static only).
 
-**Order for `cy−1` / `cy` (gap-fill — first source wins, missing years come from the next):**
+**Order for live years (gap-fill — first source wins, missing years come from the next):**
 
-1. **FRED API** — if [`FRED_API_KEY`](https://fred.stlouisfed.org/docs/api/api_key.html) is set: [series/observations](https://fred.stlouisfed.org/docs/api/fred/series_observations.html) with `observation_start` ≈ three years back (~36 monthly rows).
-2. **World Bank** — small JSON: [USA inflation %](https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=US) (`FP.CPI.TOTL.ZG`). Annual figures; may differ slightly from monthly CPI YoY.
-3. **FRED graph CSV** — public [`fredgraph.csv`](https://fred.stlouisfed.org/series/CPIAUCSL); request uses a **15s timeout** so SSR does not hang if the host stalls.
+1. **FRED API** — if [`FRED_API_KEY`](https://fred.stlouisfed.org/docs/api/api_key.html) is set: [series/observations](https://fred.stlouisfed.org/docs/api/fred/series_observations.html) with `observation_start` = Jan of **`cy−2`** and a small `limit` (~52 monthly rows), not the full series history.
+2. **World Bank** — compact JSON: [USA inflation %](https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=US) (`FP.CPI.TOTL.ZG`), `date` range only around the years we need.
+3. **FRED graph CSV** — same public URL, but we **parse only the last ~96 monthly rows** after download (CPU), plus a **15s** fetch timeout.
 
 If none of the above fill a year, that year falls back to **`staticCpiYoYByYear.json`** where present.

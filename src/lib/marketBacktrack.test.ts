@@ -5,6 +5,7 @@ import {
   fetchYahooYearlyCloses,
   normalizeTo100,
   parseFredCpiCsvToMonthlyRows,
+  parseFredCpiCsvToMonthlyRowsFromTail,
   parseStooqDailyHistoryToYearlyLastClose,
   seriesHasVariance,
 } from "@/lib/marketBacktrack";
@@ -83,6 +84,19 @@ describe("marketBacktrack", () => {
     const map = buildCpiYoYPercentByYearFromMonthlyRows(rows);
     expect(map.get(2005)).toBeCloseTo(3, 5);
     expect(map.get(2006)).toBeCloseTo((106 / 103 - 1) * 100, 5);
+  });
+
+  it("FRED CPI tail parse matches full parse for recent window (avoids parsing full graph CSV)", () => {
+    const lines = ["observation_date,CPIAUCSL"];
+    for (let y = 1960; y <= 2010; y += 1) {
+      lines.push(`${y}-12-01,${(100 + (y - 1960) * 0.4).toFixed(3)}`);
+    }
+    const huge = lines.join("\n");
+    const full = parseFredCpiCsvToMonthlyRows(huge);
+    const tail = parseFredCpiCsvToMonthlyRowsFromTail(huge, 48);
+    const mapFull = buildCpiYoYPercentByYearFromMonthlyRows(full);
+    const mapTail = buildCpiYoYPercentByYearFromMonthlyRows(tail);
+    expect(mapTail.get(2010)).toBe(mapFull.get(2010));
   });
 
   it("FRED CSV skips blank cells (do not coerce Number('') to 0)", () => {

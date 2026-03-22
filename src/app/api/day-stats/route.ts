@@ -294,6 +294,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       next: { revalidate: 0 },
       headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
+      signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) {
       return NextResponse.json({ error: "Upstream feed unavailable" }, { status: 502 });

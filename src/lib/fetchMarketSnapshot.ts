@@ -13,6 +13,7 @@ import {
   parseStooqMetrics,
   parseYahooChartLastTwoCloses,
 } from "@/lib/marketSnapshot";
+import { timedAsync } from "@/lib/serverTiming";
 
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD,NTDOY";
@@ -523,9 +524,11 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooGs = mergeYahooQuotes(gsJson, yahooData, "^GSPC");
     const yahooBtc = mergeYahooQuotes(btcJson, yahooData, "BTC-USD");
     const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
-    const spResolved = await resolveSp500Metrics(yahooGs, spx);
-    const btcResolved = await resolveBitcoinMetrics(yahooBtc, btc, { mode: "stooq" });
-    const nintendoResolved = await resolveNintendoMetrics(yahooNtdy);
+    const [spResolved, btcResolved, nintendoResolved] = await Promise.all([
+      timedAsync("market:resolveSp500", () => resolveSp500Metrics(yahooGs, spx)),
+      timedAsync("market:resolveBitcoin", () => resolveBitcoinMetrics(yahooBtc, btc, { mode: "stooq" })),
+      timedAsync("market:resolveNintendo", () => resolveNintendoMetrics(yahooNtdy)),
+    ]);
     if (spResolved.sp500 !== null && btcResolved.bitcoin !== null) {
       return {
         sp500: spResolved.sp500,
@@ -570,12 +573,16 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
     const spx = parseStooqMetrics(spText);
     const btcStooq = btcStooqRes.ok ? parseStooqMetrics(await btcStooqRes.text()) : { close: null, growthPct: null };
-    const spResolved = await resolveSp500Metrics(yahooGs, spx);
-    const btcResolved = await resolveBitcoinMetrics(yahooBtc, btcStooq, {
-      mode: "coingecko",
-      coingeckoUsd: btcData.bitcoin?.usd,
-    });
-    const nintendoResolved = await resolveNintendoMetrics(yahooNtdy);
+    const [spResolved, btcResolved, nintendoResolved] = await Promise.all([
+      timedAsync("market:resolveSp500", () => resolveSp500Metrics(yahooGs, spx)),
+      timedAsync("market:resolveBitcoin", () =>
+        resolveBitcoinMetrics(yahooBtc, btcStooq, {
+          mode: "coingecko",
+          coingeckoUsd: btcData.bitcoin?.usd,
+        }),
+      ),
+      timedAsync("market:resolveNintendo", () => resolveNintendoMetrics(yahooNtdy)),
+    ]);
     if (spResolved.sp500 !== null && btcResolved.bitcoin !== null) {
       return {
         sp500: spResolved.sp500,

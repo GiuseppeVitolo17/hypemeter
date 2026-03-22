@@ -3,6 +3,7 @@
  */
 
 import staticCpiYoYByYear from "@/data/staticCpiYoYByYear.json";
+import { timedAsync } from "@/lib/serverTiming";
 
 const YAHOO_CHART_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -23,6 +24,11 @@ type YearlyCloseMap = Map<number, number>;
 
 const STOOQ_HIST_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** Bound slow upstreams so Vercel serverless (often ~10s on Hobby) doesn’t hang on one fetch. */
+const HIST_FETCH_TIMEOUT_MS = 18_000;
+const FRED_API_TIMEOUT_MS = 12_000;
+const WB_INFLATION_TIMEOUT_MS = 10_000;
 
 /** Last trading close per calendar year from Stooq daily CSV (header must include Date + Close). */
 export function parseStooqDailyHistoryToYearlyLastClose(csv: string): YearlyCloseMap {
@@ -134,24 +140,37 @@ function loadStaticCpiYoYMap(): Map<number, number> {
   return m;
 }
 
+/** Only years drawn on the hype chart — avoids carrying unused YoY keys in the overlay map. */
+function loadStaticCpiForChartYears(chartYears: number[]): Map<number, number> {
+  const full = loadStaticCpiYoYMap();
+  const m = new Map<number, number>();
+  for (const y of chartYears) {
+    const v = full.get(y);
+    if (v !== undefined) m.set(y, v);
+  }
+  return m;
+}
+
 /**
- * Live YoY for **cy** and **cy−1** (revisions + no gap when the calendar year turns) — small API payload.
- * `observation_start` = Jan three years ago → ~36 monthly rows.
+ * Live YoY for years in `liveYears` (subset of {cy−1, cy}) — minimal monthly window for YoY math.
+ * ~3 calendar years of CPI months (cy−2 → cy) is enough for Dec-vs-prior-Dec style YoY on cy−1 and cy.
  * @see https://fred.stlouisfed.org/docs/api/fred/series_observations.html
  */
-async function fetchFredLiveYoYFromApi(cy: number): Promise<Map<number, number>> {
+async function fetchFredLiveYoYFromApi(cy: number, liveYears: number[]): Promise<Map<number, number>> {
   const key = process.env.FRED_API_KEY?.trim();
-  if (!key) return new Map();
+  if (!key || liveYears.length === 0) return new Map();
   try {
     const url = new URL("https://api.stlouisfed.org/fred/series/observations");
     url.searchParams.set("series_id", "CPIAUCSL");
     url.searchParams.set("api_key", key);
     url.searchParams.set("file_type", "json");
-    url.searchParams.set("observation_start", `${cy - 3}-01-01`);
+    url.searchParams.set("observation_start", `${cy - 2}-01-01`);
     url.searchParams.set("sort_order", "asc");
-    url.searchParams.set("limit", "120");
+    /** ~4 years of months — enough for YoY on cy−1/cy without pulling decades. */
+    url.searchParams.set("limit", "52");
     const res = await fetch(url.toString(), {
       next: { revalidate: 3600 },
+      signal: AbortSignal.timeout(FRED_API_TIMEOUT_MS),
     });
     if (!res.ok) return new Map();
     const json = (await res.json()) as {
@@ -176,7 +195,7 @@ async function fetchFredLiveYoYFromApi(cy: number): Promise<Map<number, number>>
     monthly.sort((a, b) => a.t - b.t);
     const full = buildCpiYoYPercentByYearFromMonthlyRows(monthly);
     const out = new Map<number, number>();
-    for (const y of [cy - 1, cy]) {
+    for (const y of liveYears) {
       const v = full.get(y);
       if (v !== undefined) out.set(y, v);
     }
@@ -191,12 +210,16 @@ async function fetchFredLiveYoYFromApi(cy: number): Promise<Map<number, number>>
  * May lag vs monthly CPI; fills gaps after FRED API, before the heavy FRED CSV fetch.
  * @see https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=US
  */
-async function fetchWorldBankInflationYoYForYears(cy: number): Promise<Map<number, number>> {
+async function fetchWorldBankInflationYoYForYears(liveYears: number[]): Promise<Map<number, number>> {
   const map = new Map<number, number>();
+  if (liveYears.length === 0) return map;
+  const minY = Math.min(...liveYears);
+  const maxY = Math.max(...liveYears);
   try {
-    const url = `https://api.worldbank.org/v2/country/USA/indicator/FP.CPI.TOTL.ZG?format=json&per_page=50&date=${cy - 3}:${cy + 1}`;
+    const url = `https://api.worldbank.org/v2/country/USA/indicator/FP.CPI.TOTL.ZG?format=json&per_page=20&date=${minY - 1}:${maxY}`;
     const res = await fetch(url, {
       next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(WB_INFLATION_TIMEOUT_MS),
     });
     if (!res.ok) return map;
     const json = (await res.json()) as unknown;
@@ -205,9 +228,15 @@ async function fetchWorldBankInflationYoYForYears(cy: number): Promise<Map<numbe
     for (const row of rows) {
       const raw = row.date;
       const y = raw ? parseInt(String(raw).slice(0, 4), 10) : NaN;
-      const v = row.value;
-      if (Number.isNaN(y) || v == null || typeof v !== "number" || Number.isNaN(v)) continue;
-      if (y === cy - 1 || y === cy) map.set(y, v);
+      const rawV = row.value;
+      const v =
+        rawV == null
+          ? NaN
+          : typeof rawV === "number"
+            ? rawV
+            : Number(String(rawV).trim());
+      if (Number.isNaN(y) || Number.isNaN(v)) continue;
+      if (liveYears.includes(y)) map.set(y, v);
     }
   } catch {
     // ignore
@@ -215,8 +244,26 @@ async function fetchWorldBankInflationYoYForYears(cy: number): Promise<Map<numbe
   return map;
 }
 
-/** FRED graph CSV — last resort; timeout so SSR never hangs (some hosts stall on stlouisfed.org). */
-async function fetchFredLiveYoYFromGraphCsv(cy: number): Promise<Map<number, number>> {
+/**
+ * Parse only the last ~8 years of monthly rows (+ header). The public `fredgraph.csv` is huge;
+ * we only need enough months to compute YoY for the last 1–2 calendar years on the chart.
+ * Exported for tests.
+ */
+export function parseFredCpiCsvToMonthlyRowsFromTail(csv: string, maxDataRows = 96): CpiMonthRow[] {
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = lines[0];
+  const dataLines = lines.slice(Math.max(1, lines.length - maxDataRows));
+  return parseFredCpiCsvToMonthlyRows([header, ...dataLines].join("\n"));
+}
+
+/** FRED graph CSV — last resort; parse tail only; timeout so SSR never hangs. */
+async function fetchFredLiveYoYFromGraphCsv(liveYears: number[]): Promise<Map<number, number>> {
+  if (liveYears.length === 0) return new Map();
   try {
     const res = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL", {
       next: { revalidate: 3600 },
@@ -224,10 +271,10 @@ async function fetchFredLiveYoYFromGraphCsv(cy: number): Promise<Map<number, num
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return new Map();
-    const rows = parseFredCpiCsvToMonthlyRows(await res.text());
+    const rows = parseFredCpiCsvToMonthlyRowsFromTail(await res.text());
     const full = buildCpiYoYPercentByYearFromMonthlyRows(rows);
     const out = new Map<number, number>();
-    for (const y of [cy - 1, cy]) {
+    for (const y of liveYears) {
       const v = full.get(y);
       if (v !== undefined) out.set(y, v);
     }
@@ -251,19 +298,32 @@ function mergeGapFill(
 }
 
 /**
- * Past years from `staticCpiYoYByYear.json`; `cy−1`/`cy` from FRED API → World Bank → FRED CSV (gap fill).
+ * CPI YoY for the **chart x-axis years** only: static JSON for past years, live refresh only for
+ * `cy−1`/`cy` when those years appear on the chart (otherwise skip network entirely).
  */
-async function fetchFredCpiYoYByYear(): Promise<Map<number, number>> {
-  const base = loadStaticCpiYoYMap();
+async function fetchFredCpiYoYByYear(chartYears: number[]): Promise<Map<number, number>> {
   const cy = new Date().getUTCFullYear();
-  const years = [cy - 1, cy];
+  const base = loadStaticCpiForChartYears(chartYears);
 
-  let live = await fetchFredLiveYoYFromApi(cy);
-  if (years.some((y) => !live.has(y))) {
-    live = mergeGapFill(live, await fetchWorldBankInflationYoYForYears(cy), years);
+  const liveYears = [cy - 1, cy].filter((y) => chartYears.includes(y));
+  if (liveYears.length === 0) {
+    return base;
   }
-  if (years.some((y) => !live.has(y))) {
-    live = mergeGapFill(live, await fetchFredLiveYoYFromGraphCsv(cy), years);
+
+  let live = await timedAsync("cpi:fredApi", () => fetchFredLiveYoYFromApi(cy, liveYears));
+  if (liveYears.some((y) => !live.has(y))) {
+    live = mergeGapFill(
+      live,
+      await timedAsync("cpi:worldBank", () => fetchWorldBankInflationYoYForYears(liveYears)),
+      liveYears,
+    );
+  }
+  if (liveYears.some((y) => !live.has(y))) {
+    live = mergeGapFill(
+      live,
+      await timedAsync("cpi:fredGraphCsv", () => fetchFredLiveYoYFromGraphCsv(liveYears)),
+      liveYears,
+    );
   }
 
   for (const [y, v] of live) base.set(y, v);
@@ -278,6 +338,7 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
     const res = await fetch(url, {
       next: { revalidate: 86400 },
       headers: { "user-agent": STOOQ_HIST_UA },
+      signal: AbortSignal.timeout(HIST_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return new Map();
     return parseStooqDailyHistoryToYearlyLastClose(await res.text());
@@ -295,6 +356,7 @@ export async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyClos
     const res = await fetch(url, {
       next: { revalidate: 86400 },
       headers: { "user-agent": YAHOO_CHART_UA },
+      signal: AbortSignal.timeout(HIST_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) return map;
     const json = (await res.json()) as {
@@ -385,12 +447,12 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [] };
   }
   const [spY, btcY, ntY, spS, btcS, cpiYoYMap] = await Promise.all([
-    fetchYahooYearlyCloses("^GSPC"),
-    fetchYahooYearlyCloses("BTC-USD"),
-    fetchYahooYearlyCloses("NTDOY"),
-    fetchStooqYearlyClosesBySymbol("^spx"),
-    fetchStooqYearlyClosesBySymbol("btcusd"),
-    fetchFredCpiYoYByYear(),
+    timedAsync("overlay:yahoo^GSPC", () => fetchYahooYearlyCloses("^GSPC")),
+    timedAsync("overlay:yahooBTC-USD", () => fetchYahooYearlyCloses("BTC-USD")),
+    timedAsync("overlay:yahooNTDOY", () => fetchYahooYearlyCloses("NTDOY")),
+    timedAsync("overlay:stooq^spx", () => fetchStooqYearlyClosesBySymbol("^spx")),
+    timedAsync("overlay:stooqbtcusd", () => fetchStooqYearlyClosesBySymbol("btcusd")),
+    timedAsync("overlay:cpiYoY(fred+wb+csv)", () => fetchFredCpiYoYByYear(years)),
   ]);
   const spMap = mergeYearlyMaps(spY, spS);
   const btcMap = mergeYearlyMaps(btcY, btcS);
@@ -404,11 +466,13 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
    * Use one source at a time (no mixing USD ADR with JPY in the same raw series).
    */
   if (!seriesHasVariance(ntAligned)) {
-    const jpMap = await fetchYahooYearlyCloses("7974.T");
+    const jpMap = await timedAsync("overlay:yahoo7974.T", () => fetchYahooYearlyCloses("7974.T"));
     ntAligned = alignYearSeries(years, jpMap);
   }
   if (!seriesHasVariance(ntAligned)) {
-    const stooqTokyo = await fetchStooqYearlyClosesBySymbol("7974.jp");
+    const stooqTokyo = await timedAsync("overlay:stooq7974.jp", () =>
+      fetchStooqYearlyClosesBySymbol("7974.jp"),
+    );
     ntAligned = alignYearSeries(years, stooqTokyo);
   }
   const inflationYoY = alignYearSeries(years, cpiYoYMap);
