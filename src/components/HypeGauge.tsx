@@ -43,10 +43,10 @@ export default function HypeGauge({ score }: Props) {
   const ticks = [0, 25, 50, 75, 100];
 
   return (
-    <div className="relative flex w-full max-w-[15.5rem] flex-col items-center">
+    <div className="relative flex w-full max-w-[15.5rem] flex-col items-center overflow-visible">
       <svg
-        viewBox="0 0 200 112"
-        className="h-auto w-full shrink-0 drop-shadow-[0_0_20px_rgba(34,211,238,0.08)]"
+        viewBox="-15 0 230 112"
+        className="h-auto w-full shrink-0 overflow-visible drop-shadow-[0_0_20px_rgba(34,211,238,0.08)]"
         role="img"
         aria-label={`Hype gauge at ${s} out of 100`}
       >
@@ -56,6 +56,8 @@ export default function HypeGauge({ score }: Props) {
             <stop offset="100%" stopColor="#475569" />
           </linearGradient>
         </defs>
+        {/* Shift drawing 15 user units left so the "100" tick is not clipped; wider viewBox adds right margin. */}
+        <g transform="translate(-15, 0)">
         <path
           d={arcStroke(cx, cy, rTrack, Math.PI, 0)}
           fill="none"
@@ -106,6 +108,7 @@ export default function HypeGauge({ score }: Props) {
           strokeLinecap="round"
         />
         <circle cx={cx} cy={cy} r={5} fill="#0f172a" stroke="#e2e8f0" strokeWidth={1.5} />
+        </g>
       </svg>
       <p className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
         {ZONES[zoneIndex(s)].label}
