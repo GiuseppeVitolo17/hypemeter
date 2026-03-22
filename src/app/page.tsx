@@ -1,7 +1,8 @@
-import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
+import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
+import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import Image from "next/image";
 
 type NewsItem = {
@@ -117,9 +118,6 @@ const STOOQ_NTDY_URL = "https://stooq.com/q/l/?s=ntdoy.us&i=d";
 /** Daily candles — reliable when v7 quote omits OTC fields server-side. */
 const YAHOO_CHART_NTDY_URL =
   "https://query1.finance.yahoo.com/v8/finance/chart/NTDOY?interval=1d&range=3mo";
-const YAHOO_QUOTE_SP500 = "https://finance.yahoo.com/quote/%5EGSPC";
-const YAHOO_QUOTE_BTC = "https://finance.yahoo.com/quote/BTC-USD";
-const YAHOO_QUOTE_NTDY = "https://finance.yahoo.com/quote/NTDOY";
 const COINGECKO_BTC_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 const GOOGLE_TRENDS_DAILY_RSS = "https://trends.google.com/trending/rss?geo=US";
@@ -1467,27 +1465,6 @@ function buildBacktrackSeries(liveScore: number): YearScore[] {
   return data;
 }
 
-// UI formatter for sidecar market levels.
-function formatUsd(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return "N/A";
-  }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
-}
-
-// UI formatter for sidecar day growth percentages.
-function formatGrowthPct(value: number | null) {
-  if (value === null || Number.isNaN(value)) {
-    return "N/A";
-  }
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}%`;
-}
-
 function formatInteger(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
@@ -2174,6 +2151,7 @@ export default async function Home() {
   });
   const mood = labelForScore(score);
   const history = buildBacktrackSeries(score);
+  const marketOverlay = await fetchMarketYearlyOverlay(history.map((h) => h.year));
   const todayCalendarStats = buildTodayCalendarStats(
     items.slice(0, 20),
     score,
@@ -2598,87 +2576,12 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={90}>
-        <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <h3 className="min-w-0 shrink text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
-              Hype Backtracking (2005 → now)
-            </h3>
-            <p className="shrink-0 text-xs text-slate-400">
-              First year: {history[0]?.year} • Latest:{" "}
-              {history[history.length - 1]?.year}
-            </p>
-          </div>
-          <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.7fr)]">
-            <div className="min-w-0">
-            <HypeBacktrackingChart history={history} events={timelineEventSignals} />
-            </div>
-            <aside className="relative min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 p-4 hover-lift">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
-                Market Sidecar
-              </p>
-
-              <div className="mt-4 space-y-3">
-                <a
-                  href={YAHOO_QUOTE_SP500}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-[7.25rem] flex-col justify-between rounded-xl border border-white/10 bg-slate-900 p-3 transition-colors hover:border-cyan-400/40 hover:bg-slate-900/90"
-                >
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">S&P 500</p>
-                  <p className="text-2xl font-bold tabular-nums leading-none text-cyan-300">
-                    {formatGrowthPct(market.sp500GrowthPct)}
-                  </p>
-                  <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
-                    level: {formatUsd(market.sp500)}
-                  </p>
-                </a>
-                <a
-                  href={YAHOO_QUOTE_BTC}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-[7.25rem] flex-col justify-between rounded-xl border border-white/10 bg-slate-900 p-3 transition-colors hover:border-cyan-400/40 hover:bg-slate-900/90"
-                >
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Bitcoin</p>
-                  <p className="text-2xl font-bold tabular-nums leading-none text-amber-300">
-                    {formatGrowthPct(market.bitcoinGrowthPct)}
-                  </p>
-                  <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
-                    level: {formatUsd(market.bitcoin)}
-                  </p>
-                </a>
-                <a
-                  href={YAHOO_QUOTE_NTDY}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-[7.25rem] flex-col justify-between rounded-xl border border-white/10 bg-slate-900 p-3 transition-colors hover:border-cyan-400/40 hover:bg-slate-900/90"
-                >
-                  <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
-                    Nintendo (NTDOY)
-                  </p>
-                  <p className="text-2xl font-bold tabular-nums leading-none text-red-400">
-                    {formatGrowthPct(market.nintendoGrowthPct)}
-                  </p>
-                  <p className="line-clamp-2 min-h-[2.5rem] text-[11px] leading-snug text-slate-500">
-                    level: {formatUsd(market.nintendo)}
-                    {market.nintendoPreviousClose !== null ? (
-                      <span className="text-slate-500">
-                        {" "}
-                        · prev {formatUsd(market.nintendoPreviousClose)}
-                      </span>
-                    ) : null}
-                  </p>
-                </a>
-              </div>
-
-              <p className="mt-4 text-[11px] text-slate-500">
-                Source: Yahoo Finance (quotes + daily chart for NTDOY); fallback: Stooq + CoinGecko
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500">
-                Last market update: {market.updatedAt ?? "Unavailable"}
-              </p>
-            </aside>
-          </div>
-        </section>
+          <BacktrackMarketSection
+            history={history}
+            events={timelineEventSignals}
+            marketOverlay={marketOverlay}
+            market={market}
+          />
         </ScrollReveal>
 
         <ScrollReveal delayMs={120}>

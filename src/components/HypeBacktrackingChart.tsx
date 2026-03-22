@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { MarketHighlightKey, MarketYearlyOverlay } from "@/lib/marketBacktrack";
 
 type YearScore = {
   year: number;
@@ -16,6 +17,9 @@ type YearEventSignal = {
 type Props = {
   history: YearScore[];
   events?: YearEventSignal[];
+  /** Normalized 0–100 yearly series (same length as `history`). */
+  marketOverlay?: MarketYearlyOverlay | null;
+  highlightSeries?: MarketHighlightKey | null;
 };
 
 function zoneForScore(score: number) {
@@ -27,7 +31,18 @@ function zoneForScore(score: number) {
   return "dead";
 }
 
-export default function HypeBacktrackingChart({ history, events = [] }: Props) {
+const MARKET_COLORS = {
+  sp500: "rgba(52, 211, 153, 0.85)",
+  btc: "rgba(251, 191, 36, 0.85)",
+  nintendo: "rgba(251, 113, 133, 0.85)",
+} as const;
+
+export default function HypeBacktrackingChart({
+  history,
+  events = [],
+  marketOverlay = null,
+  highlightSeries = null,
+}: Props) {
   // SVG dimensions and drawing paddings for stable scaling across breakpoints.
   const chartWidth = 940;
   const chartHeight = 250;
@@ -43,6 +58,27 @@ export default function HypeBacktrackingChart({ history, events = [] }: Props) {
       return { ...entry, x, y };
     });
   }, [history, safeHeight, safeWidth]);
+
+  const marketLines = useMemo(() => {
+    if (!marketOverlay || history.length === 0) return null;
+    const n = history.length;
+    const keys: Array<{ key: MarketHighlightKey; values: number[]; color: string }> = [
+      { key: "sp500", values: marketOverlay.sp500, color: MARKET_COLORS.sp500 },
+      { key: "btc", values: marketOverlay.btc, color: MARKET_COLORS.btc },
+      { key: "nintendo", values: marketOverlay.nintendo, color: MARKET_COLORS.nintendo },
+    ];
+    return keys
+      .map(({ key, values, color }) => {
+        if (!values || values.length !== n) return null;
+        const pts = values.map((score, idx) => {
+          const x = padX + (idx / Math.max(n - 1, 1)) * safeWidth;
+          const y = padY + ((100 - score) / 100) * safeHeight;
+          return `${x},${y}`;
+        });
+        return { key, points: pts.join(" "), color };
+      })
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+  }, [history.length, marketOverlay, padX, padY, safeHeight, safeWidth]);
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
   // Active point powers tooltip and stat cards; defaults to latest year.
@@ -104,10 +140,29 @@ export default function HypeBacktrackingChart({ history, events = [] }: Props) {
             />
           );
         })}
+        {marketLines?.map((line) => {
+          const dim = highlightSeries !== null && highlightSeries !== line.key;
+          const strokeWidth = highlightSeries === line.key ? 2.6 : 1.15;
+          const opacity = dim ? 0.18 : highlightSeries === line.key ? 1 : 0.42;
+          return (
+            <polyline
+              key={line.key}
+              fill="none"
+              stroke={line.color}
+              strokeWidth={strokeWidth}
+              strokeOpacity={opacity}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              points={line.points}
+            />
+          );
+        })}
         <polyline
           fill="none"
-          stroke="rgba(34, 211, 238, 0.9)"
+          stroke="rgba(34, 211, 238, 0.95)"
           strokeWidth="4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
           points={polyline}
         />
         {events
@@ -213,6 +268,15 @@ export default function HypeBacktrackingChart({ history, events = [] }: Props) {
       </div>
       <p className="mt-2 text-[11px] text-slate-500">
         Hover across the chart to inspect each year.
+        {marketLines && marketLines.length > 0 ? (
+          <span className="mt-1 block text-slate-600">
+            Thin tracks:{" "}
+            <span className="text-emerald-400/90">S&amp;P 500</span> ·{" "}
+            <span className="text-amber-300/90">Bitcoin</span> ·{" "}
+            <span className="text-rose-300/90">Nintendo</span> (normalized 0–100 vs each asset&apos;s
+            range).
+          </span>
+        ) : null}
       </p>
       <div className="mt-2 min-h-[24px]">
         {activeEvents.length > 0 ? (
