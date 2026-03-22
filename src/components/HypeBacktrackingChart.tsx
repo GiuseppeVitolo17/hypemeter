@@ -26,18 +26,21 @@ function collectScoresForYRange(history: YearScore[], marketOverlay: MarketYearl
   return values;
 }
 
+/** Tighter Y-zoom on mobile so trends read clearly (avoid a wide 0–100 feel). */
 function computeMobileYScale(values: number[]): { yMin: number; yMax: number } {
   if (values.length === 0) return { yMin: 0, yMax: 100 };
   let vmin = Math.min(...values);
   let vmax = Math.max(...values);
   const spread = vmax - vmin;
-  const pad = spread < 1e-9 ? 10 : Math.max(spread * 0.12, 5);
+  // Less padding than before so slopes use more of the plot height.
+  const pad = spread < 1e-9 ? 8 : Math.max(spread * 0.05, 1.5);
   let yMin = Math.max(0, vmin - pad);
   let yMax = Math.min(100, vmax + pad);
-  if (yMax - yMin < 18) {
+  // Old logic forced ~24pt span when zoom was tight, which flattened curves; keep a small floor only.
+  if (yMax - yMin < 8) {
     const mid = (yMin + yMax) / 2;
-    yMin = Math.max(0, mid - 12);
-    yMax = Math.min(100, mid + 12);
+    yMin = Math.max(0, mid - 5);
+    yMax = Math.min(100, mid + 5);
   }
   return { yMin, yMax };
 }
@@ -137,8 +140,8 @@ export default function HypeBacktrackingChart({
   const isMobileChartEnhance = useMatchMedia(MOBILE_CHART_ENHANCE_MQ);
   // SVG dimensions and drawing paddings for stable scaling across breakpoints.
   const chartWidth = 940;
-  /** Taller plot area so the chart column matches Market Sidecar height on large screens. */
-  const chartHeight = 340;
+  /** Taller viewBox on mobile so the same data range maps to more vertical pixels (clearer trends). */
+  const chartHeight = isMobileChartEnhance ? 420 : 340;
   const padX = 20;
   const padY = 18;
   const safeWidth = chartWidth - padX * 2;
@@ -304,7 +307,7 @@ export default function HypeBacktrackingChart({
       </div>
 
       <div
-        className="relative min-h-[220px] w-full overflow-hidden sm:min-h-[260px] lg:min-h-[280px]"
+        className="relative min-h-[300px] w-full overflow-hidden sm:min-h-[260px] lg:min-h-[280px]"
         onPointerEnter={() => setChartHovered(true)}
         onPointerLeave={() => setChartHovered(false)}
       >
@@ -341,14 +344,21 @@ export default function HypeBacktrackingChart({
         <polyline
           fill="none"
           stroke="rgba(34, 211, 238, 0.95)"
-          strokeWidth="4"
+          strokeWidth={isMobileChartEnhance ? 4.75 : 4}
           strokeLinejoin="round"
           strokeLinecap="round"
           points={polyline}
         />
         {marketLines?.map((line) => {
           const dim = highlightSeries !== null && highlightSeries !== line.key;
-          const strokeWidth = highlightSeries === line.key ? 2.8 : 1.65;
+          const strokeWidth =
+            highlightSeries === line.key
+              ? isMobileChartEnhance
+                ? 3.1
+                : 2.8
+              : isMobileChartEnhance
+                ? 2
+                : 1.65;
           const opacity = dim ? 0.22 : highlightSeries === line.key ? 1 : 0.78;
           return (
             <polyline
@@ -537,7 +547,7 @@ export default function HypeBacktrackingChart({
           ) : null}
           {isMobileChartEnhance && yScaleParams.mode === "zoom" ? (
             <span className="mt-1 block text-[10px] text-slate-600 md:hidden">
-              Vertical scale fits this window so moves read larger (still 0–100 data).
+              Y-axis zoomed to this window on mobile so trends read larger (values stay 0–100).
             </span>
           ) : null}
         </p>
