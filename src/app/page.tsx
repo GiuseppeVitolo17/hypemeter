@@ -1871,6 +1871,9 @@ export default async function Home() {
     if (previous <= 0) return 100;
     return ((current - previous) / previous) * 100;
   };
+  /** Map day-over-day % change to a 0–100 bar (flat day ≈ 50%). Volume is shown in the number above. */
+  const socialMomentumBarPct = (deltaPct: number) =>
+    clampScore(50 + Math.max(-95, Math.min(95, deltaPct)) * 0.48);
   const platformGraphBase = [
     {
       key: "google-search",
@@ -1915,15 +1918,12 @@ export default async function Home() {
       accent: "from-fuchsia-400 to-purple-500",
     },
   ];
-  const maxPlatformCurrent = Math.max(
-    1,
-    ...platformGraphBase.map((platform) => Math.log10(platform.current + 1)),
-  );
   const platformGraph = platformGraphBase.map((platform) => {
+    const deltaPct = pctDelta(platform.current, platform.previous);
     return {
       ...platform,
-      deltaPct: pctDelta(platform.current, platform.previous),
-      barPct: clampScore((Math.log10(platform.current + 1) / maxPlatformCurrent) * 100),
+      deltaPct,
+      barPct: socialMomentumBarPct(deltaPct),
     };
   });
   const pokemonCatalog = await fetchPokemonNameCatalog();
@@ -2099,26 +2099,32 @@ export default async function Home() {
                 style={{ width: `${score}%` }}
               />
             </div>
-            <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-stretch">
-              <div className="grid flex-1 gap-2 sm:grid-cols-3">
-                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+            <div className="mt-3 grid gap-3 lg:grid-cols-2 lg:items-stretch">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Momentum</p>
-                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.momentumTag}</p>
+                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
+                    {traderNarrative.momentumTag}
+                  </p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Breadth</p>
-                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.breadthTag}</p>
+                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
+                    {traderNarrative.breadthTag}
+                  </p>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem] sm:flex sm:flex-col sm:justify-center">
                   <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Conviction</p>
-                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.convictionTag}</p>
+                  <p className="mt-1 text-sm font-semibold leading-snug text-cyan-300">
+                    {traderNarrative.convictionTag}
+                  </p>
                 </div>
               </div>
-              <div className="min-h-0 min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:max-w-none">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:h-full lg:max-w-none">
+                <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
                 </p>
-                <div className="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible">
+                <div className="mt-2 flex min-h-0 max-h-24 flex-1 flex-wrap content-start gap-1.5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-28 lg:max-h-none">
                   {liveEventSignals.length > 0 ? (
                     liveEventSignals.map((signal) => (
                       <span
@@ -2209,6 +2215,9 @@ export default async function Home() {
               <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
                 Social Signal Pulse
               </p>
+              <p className="mt-1 text-[9px] leading-snug text-slate-500">
+                Bar width = day-over-day momentum (50% ≈ flat). Big number = today&apos;s traffic level.
+              </p>
               <div className="mt-2 grid flex-1 auto-rows-fr gap-2 sm:grid-cols-2">
                 {platformGraph.map((platform, index) => (
                   <article
@@ -2227,7 +2236,9 @@ export default async function Home() {
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-700">
                       <div
-                        className={`h-full rounded-full bg-gradient-to-r ${platform.accent}`}
+                        className={`h-full rounded-full bg-gradient-to-r ${
+                          platform.deltaPct >= 0 ? platform.accent : "from-slate-600 to-rose-600"
+                        }`}
                         style={{ width: `${platform.barPct}%` }}
                       />
                     </div>
