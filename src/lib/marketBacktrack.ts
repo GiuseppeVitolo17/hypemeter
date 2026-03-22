@@ -52,11 +52,15 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
   return map;
 }
 
-/** Pre-first datapoint = first known close (flat line), then forward-fill. */
-function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] {
+/**
+ * Pre-first datapoint = first known close (flat line), then forward-fill.
+ * Returns `null` when Yahoo returned no usable closes — do not draw a fake flat line
+ * (constant series normalizes to 0 and stacks three identical “bottom” lines).
+ */
+export function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] | null {
   const raw = years.map((y) => yearly.get(y) ?? null);
   const firstIdx = raw.findIndex((v) => v != null);
-  if (firstIdx === -1) return years.map(() => 50);
+  if (firstIdx === -1) return null;
   const firstVal = raw[firstIdx]!;
   let last = firstVal;
   return raw.map((v, i) => {
@@ -65,12 +69,13 @@ function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] {
   });
 }
 
-function normalizeTo100(values: number[]): number[] {
+/** Min–max normalize to 0–100. Empty when inputs are degenerate (no variance). */
+export function normalizeTo100(values: number[]): number[] {
   if (values.length === 0) return [];
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const span = max - min || 1;
-  return values.map((v) => ((v - min) / span) * 100);
+  if (max === min) return [];
+  return values.map((v) => ((v - min) / (max - min)) * 100);
 }
 
 /** Parallel fetch + per-asset normalization (same Y scale as hype 0–100). */
@@ -83,8 +88,11 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     fetchYahooYearlyCloses("BTC-USD"),
     fetchYahooYearlyCloses("NTDOY"),
   ]);
-  const sp500 = normalizeTo100(alignYearSeries(years, spMap));
-  const btc = normalizeTo100(alignYearSeries(years, btcMap));
-  const nintendo = normalizeTo100(alignYearSeries(years, ntMap));
+  const spAligned = alignYearSeries(years, spMap);
+  const btcAligned = alignYearSeries(years, btcMap);
+  const ntAligned = alignYearSeries(years, ntMap);
+  const sp500 = spAligned === null ? [] : normalizeTo100(spAligned);
+  const btc = btcAligned === null ? [] : normalizeTo100(btcAligned);
+  const nintendo = ntAligned === null ? [] : normalizeTo100(ntAligned);
   return { sp500, btc, nintendo };
 }

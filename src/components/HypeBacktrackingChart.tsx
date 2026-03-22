@@ -31,6 +31,27 @@ function zoneForScore(score: number) {
   return "dead";
 }
 
+/** Strict local maxima on the hype score (same series as the cyan streamline). */
+function localPeakIndices(history: YearScore[]): number[] {
+  if (history.length === 0) return [];
+  if (history.length === 1) return [0];
+  const out: number[] = [];
+  for (let i = 0; i < history.length; i++) {
+    const s = history[i].score;
+    const left = i === 0 ? -Infinity : history[i - 1].score;
+    const right = i === history.length - 1 ? -Infinity : history[i + 1].score;
+    if (s > left && s > right) out.push(i);
+  }
+  return out;
+}
+
+/** Keep the strongest peaks so markers stay readable. */
+function topPeakIndices(history: YearScore[], maxMarkers: number): Set<number> {
+  const peaks = localPeakIndices(history);
+  const sorted = [...peaks].sort((a, b) => history[b].score - history[a].score);
+  return new Set(sorted.slice(0, maxMarkers));
+}
+
 const MARKET_COLORS = {
   sp500: "rgba(52, 211, 153, 0.85)",
   btc: "rgba(251, 191, 36, 0.85)",
@@ -58,6 +79,8 @@ export default function HypeBacktrackingChart({
       return { ...entry, x, y };
     });
   }, [history, safeHeight, safeWidth]);
+
+  const hypePeakIndices = useMemo(() => topPeakIndices(history, 8), [history]);
 
   const marketLines = useMemo(() => {
     if (!marketOverlay || history.length === 0) return null;
@@ -93,6 +116,7 @@ export default function HypeBacktrackingChart({
   const max = points.length > 0 ? Math.max(...points.map((point) => point.score)) : 0;
   const min = points.length > 0 ? Math.min(...points.map((point) => point.score)) : 0;
   const activeEvents = active ? events.filter((event) => event.year === active.year) : [];
+  const activeIsHypePeak = active ? hypePeakIndices.has(activeIndex) : false;
 
   return (
     <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950 px-3 pt-3 pb-2">
@@ -165,33 +189,6 @@ export default function HypeBacktrackingChart({
           strokeLinecap="round"
           points={polyline}
         />
-        {events
-          .map((event) => {
-            const idx = points.findIndex((point) => point.year === event.year);
-            return idx === -1 ? null : { ...event, point: points[idx] };
-          })
-          .filter((entry): entry is YearEventSignal & { point: (typeof points)[number] } => Boolean(entry))
-          .map((entry) => (
-            <g key={`${entry.year}-${entry.label}`}>
-              <line
-                x1={entry.point.x}
-                y1={entry.point.y - 3}
-                x2={entry.point.x}
-                y2={24}
-                stroke="rgba(244, 114, 182, 0.38)"
-                strokeDasharray="2 4"
-              />
-              <circle
-                cx={entry.point.x}
-                cy={24}
-                r={2.8 + entry.intensity / 42}
-                fill="rgba(244, 114, 182, 0.9)"
-                className="cursor-pointer"
-                onMouseEnter={() => setActiveIndex(points.findIndex((point) => point.year === entry.year))}
-                onClick={() => setActiveIndex(points.findIndex((point) => point.year === entry.year))}
-              />
-            </g>
-          ))}
         <rect
           x={padX}
           y={padY}
@@ -207,26 +204,36 @@ export default function HypeBacktrackingChart({
             setActiveIndex(next);
           }}
         />
-        {points.map((point, idx) => (
-          <g key={point.year}>
-            <circle
-              cx={point.x}
-              cy={point.y}
-              r={activeIndex === idx ? 8 : point.year % 5 === 0 ? 5.2 : 3.4}
-              fill={
-                activeIndex === idx
-                  ? "#f8fafc"
-                  : point.year === points[points.length - 1]?.year
-                    ? "#f472b6"
-                    : "#22d3ee"
-              }
-              className="cursor-pointer"
-              style={{ transition: "fill 120ms ease" }}
-              onMouseEnter={() => setActiveIndex(idx)}
-              onClick={() => setActiveIndex(idx)}
-            />
-          </g>
-        ))}
+        {points.map((point, idx) => {
+          const isPeak = hypePeakIndices.has(idx);
+          const isLastYear = point.year === points[points.length - 1]?.year;
+          return (
+            <g key={point.year}>
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r={
+                  activeIndex === idx ? 8 : isPeak ? 6.4 : point.year % 5 === 0 ? 5.2 : 3.4
+                }
+                fill={
+                  activeIndex === idx
+                    ? "#f8fafc"
+                    : isPeak
+                      ? "rgba(232, 121, 249, 0.95)"
+                      : isLastYear
+                        ? "#f472b6"
+                        : "#22d3ee"
+                }
+                stroke={isPeak && activeIndex !== idx ? "rgba(244, 114, 182, 0.55)" : "none"}
+                strokeWidth={isPeak && activeIndex !== idx ? 1.2 : 0}
+                className="cursor-pointer"
+                style={{ transition: "fill 120ms ease" }}
+                onMouseEnter={() => setActiveIndex(idx)}
+                onClick={() => setActiveIndex(idx)}
+              />
+            </g>
+          );
+        })}
 
         {active ? (
           <>
@@ -252,7 +259,7 @@ export default function HypeBacktrackingChart({
                 {active.year} • Score {active.score}
               </text>
               <text x="10" y="32" fill="#94a3b8" fontSize="10">
-                Zone: {zoneForScore(active.score)}
+                {activeIsHypePeak ? "Local peak · " : ""}Zone: {zoneForScore(active.score)}
               </text>
             </g>
           </>
@@ -267,7 +274,9 @@ export default function HypeBacktrackingChart({
         <span>{history[history.length - 1]?.year}</span>
       </div>
       <p className="mt-1 text-[11px] leading-snug text-slate-500">
-        Hover across the chart to inspect each year.
+        Hover across the chart to inspect each year.{" "}
+        <span className="text-fuchsia-300/90">Fuchsia dots</span> = local peaks on the hype score (same line as the
+        cyan streamline).
         {marketLines && marketLines.length > 0 ? (
           <span className="text-slate-600">
             {" "}
