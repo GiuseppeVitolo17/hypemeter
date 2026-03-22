@@ -1441,7 +1441,12 @@ function findPokemonNameMatchInText(articleText: string, names: string[]) {
 
 async function fetchArticleTextForPokemonMatching(url: string) {
   try {
-    const res = await fetch(url, {
+    const normalizedUrl = normalize(url);
+    const absUrl = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    const fetchUrl = normalizedUrl.includes("pokemon.com")
+      ? `https://r.jina.ai/${absUrl}`
+      : absUrl;
+    const res = await fetch(fetchUrl, {
       next: { revalidate: 1800 },
       headers: { "user-agent": "Mozilla/5.0 hypemeter" },
     });
@@ -1456,6 +1461,14 @@ async function fetchArticleTextForPokemonMatching(url: string) {
   } catch {
     return "";
   }
+}
+
+// Use only the start of the article body for name matching — footers/sidebars often mention unrelated Pokémon.
+function primaryArticleChunkForPokemon(fullPlain: string, maxLen = 5200) {
+  const slice = fullPlain.slice(0, maxLen);
+  const idx = slice.search(/\b(pokemon|pokémon)\b/i);
+  if (idx > 120) return slice.slice(idx, idx + maxLen);
+  return slice;
 }
 
 function rankPokemonMatchesFromSources(
@@ -1624,18 +1637,22 @@ function buildPokemonCandidateNamesFromTitle(title: string) {
 async function pickPokemonOfDayFromArticle(article: PokemonOfDayArticle | null, pokemonCatalog: string[]) {
   if (!article) return null;
 
+  const feedText = normalize(`${article.title} ${article.summary}`);
   for (const mention of article.pokemonMentions) {
+    const token = normalize(mention.replace(/-/g, " "));
+    if (token.length < 3 || !feedText.includes(token)) continue;
     const matched = await fetchPokemonByIdentifier(mention);
     if (matched) return matched;
   }
 
   const articlePageText = await fetchArticleTextForPokemonMatching(article.link);
-  const articleText = `${article.title} ${article.summary} ${articlePageText}`;
+  const bodyChunk = primaryArticleChunkForPokemon(articlePageText);
+  const articleText = `${article.title} ${article.summary} ${bodyChunk}`;
   const rankedMatches = rankPokemonMatchesFromSources(
     [
-      { text: article.title, weight: 2.4 },
-      { text: article.summary, weight: 1.4 },
-      { text: articlePageText, weight: 1.8 },
+      { text: article.title, weight: 6 },
+      { text: article.summary, weight: 5 },
+      { text: bodyChunk, weight: 1.1 },
     ],
     pokemonCatalog,
   );
@@ -1645,7 +1662,7 @@ async function pickPokemonOfDayFromArticle(article: PokemonOfDayArticle | null, 
     if (matched) return matched;
   }
 
-  const candidates = buildPokemonCandidateNamesFromTitle(articleText);
+  const candidates = buildPokemonCandidateNamesFromTitle(`${article.title} ${article.summary}`);
   for (const candidate of candidates) {
     const pokemon = await fetchPokemonByIdentifier(candidate);
     if (pokemon) return pokemon;
@@ -1989,7 +2006,7 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,calc(100vw-3rem))]">
         <ScrollReveal>
           <header className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30 backdrop-blur hover-lift">
             <div className="grid items-start gap-4 lg:grid-cols-[1fr_auto]">
@@ -2071,76 +2088,81 @@ export default async function Home() {
 
         <ScrollReveal delayMs={60}>
           <section className="grid items-stretch gap-6 lg:grid-cols-2">
-          <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-7 hover-lift">
-            <div className="flex flex-wrap items-end justify-between gap-6">
-              <div>
+          <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift sm:p-7">
+            {/* Main read: score + circular meter stay on one row from `sm` up (no flex-wrap jump). */}
+            <div className="grid grid-cols-1 items-center gap-5 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:gap-4 lg:gap-6">
+              <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
                   Current Hype
                 </p>
-                <h2 className="mt-1 text-4xl font-black md:text-6xl">
+                <h2 className="mt-1 text-3xl font-black tabular-nums sm:text-4xl md:text-5xl lg:text-6xl">
                   {score}
-                  <span className="text-2xl text-slate-400">/100</span>
+                  <span className="text-xl text-slate-400 sm:text-2xl">/100</span>
                 </h2>
-                <p className="mt-1 text-lg font-semibold text-fuchsia-300">
+                <p className="mt-1 text-base font-semibold text-fuchsia-300 sm:text-lg">
                   {traderNarrative.regime}
                 </p>
-                <p className="max-w-md text-sm text-slate-400">{traderNarrative.summary}</p>
+                <p className="mt-1 max-w-xl text-sm leading-snug text-slate-400 line-clamp-3 sm:line-clamp-none">
+                  {traderNarrative.summary}
+                </p>
               </div>
-              <div className="group relative h-40 w-40 rounded-full p-3 ring-1 ring-white/20">
+              <div className="group relative mx-auto h-36 w-36 shrink-0 rounded-full p-2.5 ring-1 ring-white/20 min-[420px]:mx-0 sm:h-40 sm:w-40 sm:p-3">
                 <div
                   className="h-full w-full rounded-full transition-transform duration-300 group-hover:scale-[1.03]"
                   style={{
                     background: `conic-gradient(#22d3ee ${score * 3.6}deg, #334155 0deg)`,
                   }}
                 />
-                <div className="absolute inset-8 flex items-center justify-center rounded-full bg-slate-900 text-2xl font-black">
+                <div className="absolute inset-7 flex items-center justify-center rounded-full bg-slate-900 text-xl font-black sm:inset-8 sm:text-2xl">
                   {score}
                 </div>
-                <div className="pointer-events-none absolute -bottom-10 left-1/2 w-44 -translate-x-1/2 rounded-lg border border-cyan-400/30 bg-slate-900/95 px-2 py-1 text-center text-[10px] text-cyan-200 opacity-0 shadow-lg shadow-cyan-950/40 transition-opacity duration-200 group-hover:opacity-100">
+                <div className="pointer-events-none absolute -bottom-10 left-1/2 z-10 w-44 -translate-x-1/2 rounded-lg border border-cyan-400/30 bg-slate-900/95 px-2 py-1 text-center text-[10px] text-cyan-200 opacity-0 shadow-lg shadow-cyan-950/40 transition-opacity duration-200 group-hover:opacity-100">
                   Hover insight: {mood.label.toLowerCase()} • {Math.max(0, 100 - score)} pts to max hype
                 </div>
               </div>
             </div>
-            <div className="mt-5 h-4 overflow-hidden rounded-full bg-slate-700">
+            <div className="mt-4 h-4 overflow-hidden rounded-full bg-slate-700 sm:mt-5">
               <div
                 className={`h-full rounded-full bg-gradient-to-r ${meterColor(score)}`}
                 style={{ width: `${score}%` }}
               />
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Momentum</p>
-                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.momentumTag}</p>
+            <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-stretch">
+              <div className="grid flex-1 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Momentum</p>
+                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.momentumTag}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Breadth</p>
+                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.breadthTag}</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Conviction</p>
+                  <p className="text-sm font-semibold text-cyan-300">{traderNarrative.convictionTag}</p>
+                </div>
               </div>
-              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Breadth</p>
-                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.breadthTag}</p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-slate-800 px-3 py-2">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Conviction</p>
-                <p className="text-sm font-semibold text-cyan-300">{traderNarrative.convictionTag}</p>
-              </div>
-            </div>
-            <div className="mt-3 rounded-xl border border-white/10 bg-slate-800/80 p-3">
-              <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                Live Event Signals
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {liveEventSignals.length > 0 ? (
-                  liveEventSignals.map((signal) => (
-                    <span
-                      key={`${signal.group}-${signal.label}`}
-                      className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
-                      title={`Weight ${signal.weight.toFixed(1)} • ${signal.group}`}
-                    >
-                      {signal.label}
+              <div className="min-h-0 min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:max-w-none">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                  Live Event Signals
+                </p>
+                <div className="mt-2 flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1 lg:max-h-none lg:overflow-visible">
+                  {liveEventSignals.length > 0 ? (
+                    liveEventSignals.map((signal) => (
+                      <span
+                        key={`${signal.group}-${signal.label}`}
+                        className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
+                        title={`Weight ${signal.weight.toFixed(1)} • ${signal.group}`}
+                      >
+                        {signal.label}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">
+                      No strong event triggers in latest headlines.
                     </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-slate-400">
-                    No strong event triggers in latest headlines.
-                  </span>
-                )}
+                  )}
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -2171,21 +2193,26 @@ export default async function Home() {
                   </p>
                 </div>
               </div>
-              <div className="rounded-xl border border-cyan-400/25 bg-slate-800/90 p-3 hover-lift sm:col-span-2">
-                <p className="text-xs uppercase tracking-[0.12em] text-cyan-300">
-                  Model Weights
-                </p>
-                <p className="mt-1 text-[11px] text-slate-300">
+              <details className="group rounded-xl border border-cyan-400/25 bg-slate-800/90 p-3 hover-lift sm:col-span-2 open:ring-1 open:ring-cyan-500/20">
+                <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.12em] text-cyan-300 marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="inline-flex items-center gap-2">
+                    Model Weights
+                    <span className="rounded-full border border-white/15 bg-slate-900/80 px-2 py-0.5 text-[10px] font-normal normal-case tracking-normal text-slate-400 group-open:hidden">
+                      tap to expand
+                    </span>
+                  </span>
+                </summary>
+                <p className="mt-2 text-[11px] text-slate-300">
                   Composite index with 6 weighted components: Search Interest (30%),
                   Market Momentum (20%), Availability Pressure (17%), Event Catalyst (13%),
                   Community Sentiment (10%), Product Stress (10%).
                 </p>
-              </div>
+              </details>
             </div>
           </div>
 
-          <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-7 hover-lift">
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className="relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift sm:p-7">
+            <div className="grid gap-3 lg:grid-cols-3">
               {sentiments.map((sentiment) => (
                 <div
                   key={sentiment.key}
