@@ -186,12 +186,42 @@ async function fetchFredLiveYoYFromApi(cy: number): Promise<Map<number, number>>
   }
 }
 
-/** Fallback: full graph CSV — only `cy−1` and `cy` YoY are merged (rest from static JSON). */
+/**
+ * World Bank annual inflation % (USA) — small JSON, often reachable when FRED is slow/blocked.
+ * May lag vs monthly CPI; fills gaps after FRED API, before the heavy FRED CSV fetch.
+ * @see https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=US
+ */
+async function fetchWorldBankInflationYoYForYears(cy: number): Promise<Map<number, number>> {
+  const map = new Map<number, number>();
+  try {
+    const url = `https://api.worldbank.org/v2/country/USA/indicator/FP.CPI.TOTL.ZG?format=json&per_page=50&date=${cy - 3}:${cy + 1}`;
+    const res = await fetch(url, {
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return map;
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json) || json.length < 2) return map;
+    const rows = json[1] as Array<{ date?: string; value?: number | null }>;
+    for (const row of rows) {
+      const raw = row.date;
+      const y = raw ? parseInt(String(raw).slice(0, 4), 10) : NaN;
+      const v = row.value;
+      if (Number.isNaN(y) || v == null || typeof v !== "number" || Number.isNaN(v)) continue;
+      if (y === cy - 1 || y === cy) map.set(y, v);
+    }
+  } catch {
+    // ignore
+  }
+  return map;
+}
+
+/** FRED graph CSV — last resort; timeout so SSR never hangs (some hosts stall on stlouisfed.org). */
 async function fetchFredLiveYoYFromGraphCsv(cy: number): Promise<Map<number, number>> {
   try {
     const res = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL", {
       next: { revalidate: 3600 },
       headers: { "user-agent": STOOQ_HIST_UA },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return new Map();
     const rows = parseFredCpiCsvToMonthlyRows(await res.text());
@@ -207,14 +237,35 @@ async function fetchFredLiveYoYFromGraphCsv(cy: number): Promise<Map<number, num
   }
 }
 
-/** Past years from `staticCpiYoYByYear.json`; last two calendar years refreshed from FRED. */
+/** Add values from `fill` only for `years` keys missing in `primary` (FRED API/CSV wins on overlap). */
+function mergeGapFill(
+  primary: Map<number, number>,
+  fill: Map<number, number>,
+  years: number[],
+): Map<number, number> {
+  const out = new Map(primary);
+  for (const y of years) {
+    if (!out.has(y) && fill.has(y)) out.set(y, fill.get(y)!);
+  }
+  return out;
+}
+
+/**
+ * Past years from `staticCpiYoYByYear.json`; `cy−1`/`cy` from FRED API → World Bank → FRED CSV (gap fill).
+ */
 async function fetchFredCpiYoYByYear(): Promise<Map<number, number>> {
   const base = loadStaticCpiYoYMap();
   const cy = new Date().getUTCFullYear();
+  const years = [cy - 1, cy];
+
   let live = await fetchFredLiveYoYFromApi(cy);
-  if (live.size === 0) {
-    live = await fetchFredLiveYoYFromGraphCsv(cy);
+  if (years.some((y) => !live.has(y))) {
+    live = mergeGapFill(live, await fetchWorldBankInflationYoYForYears(cy), years);
   }
+  if (years.some((y) => !live.has(y))) {
+    live = mergeGapFill(live, await fetchFredLiveYoYFromGraphCsv(cy), years);
+  }
+
   for (const [y, v] of live) base.set(y, v);
   return base;
 }
