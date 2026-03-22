@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="70" height="98" viewBox="0 0 70 98" fill="none">
+  <rect width="70" height="98" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-opacity="0.35"/>
+  <path d="M20 28h30v6H20v-6zm0 12h22v4H20v-4zm0 10h26v4H20v-4z" fill="#64748b" opacity="0.6"/>
+  <text x="35" y="78" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="system-ui,sans-serif">TCG</text>
+</svg>

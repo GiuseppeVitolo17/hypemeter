@@ -1,11 +1,5 @@
 # Server timing debug (Vercel)
 
-## Cache home (15 min)
-
-La pipeline della home è in **`unstable_cache`** con TTL **900s** → stesso deploy non riesegue tutti i fetch ad ogni reload entro 15 minuti. Dettagli: `docs/home-data-cache.md`.
-
----
-
 ## Build vs caricamento lento (importante)
 
 | Cosa misuri | Dove guardi | Cosa significa |

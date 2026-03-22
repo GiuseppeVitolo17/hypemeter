@@ -1,11 +1,13 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
+import { CardTraderHighlightImage } from "@/components/CardTraderHighlightImage";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
 import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
+import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import Image from "next/image";
@@ -86,14 +88,6 @@ type PokemonOfDayArticle = {
   pokemonMentions: string[];
 };
 
-/** First listing in CardTrader Pokémon “Best Sellers” (TCG singles). */
-type CardTraderBestSeller = {
-  name: string;
-  imageUrl: string;
-  cardUrl: string;
-  fromPrice: string;
-};
-
 // Always render dynamically so the market sidecar (and other live fetches) never come from stale ISR HTML.
 export const dynamic = "force-dynamic";
 
@@ -112,12 +106,6 @@ const GOOGLE_TRENDS_DAILY_RSS = "https://trends.google.com/trending/rss?geo=US";
 const POKEMON_NEWS_URL = "https://www.pokemon.com/us/pokemon-news";
 const REDDIT_TCG_URL = "https://www.reddit.com/r/PokemonTCG/hot.json?limit=30";
 const REDDIT_CARDS_URL = "https://www.reddit.com/r/pokemoncards/hot.json?limit=30";
-
-/**
- * Global /en/highlights is Magic-first; Pokémon TCG best sellers live on the game hub.
- * Same marketplace as https://www.cardtrader.com/en/highlights (linked from that page).
- */
-const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
 
 /** Inline CSS gradients — Tailwind cannot see dynamic `from-*` / `to-*` class strings on `platform.accent`. */
 const SOCIAL_PULSE_BAR_GRADIENT_POSITIVE: Record<string, string> = {
@@ -562,37 +550,6 @@ async function fetchWithTimeout(
     return null;
   } finally {
     clearTimeout(timeoutId);
-  }
-}
-
-async function fetchCardTraderPokemonBestSeller(): Promise<CardTraderBestSeller | null> {
-  try {
-    const jinaUrl = `https://r.jina.ai/${CARDTRADER_POKEMON_HUB}`;
-    const res = await fetchWithTimeout(jinaUrl, {
-      next: { revalidate: 3600 },
-      headers: { "user-agent": "Mozilla/5.0 hypemeter" },
-      timeoutMs: 18000,
-    });
-    if (!res?.ok) return null;
-    const text = await res.text();
-    const section = text.split("## Best Sellers")[1]?.split("\n## ")[0] ?? "";
-    const m = section.match(
-      /\[!\[[^\]]*\]\((https:\/\/[^)]+)\)\s*([\s\S]+?)\]\((https:\/\/www\.cardtrader\.com\/en\/cards\/[^)]+)\)/,
-    );
-    if (!m) return null;
-    const imageUrl = m[1];
-    const rawLabel = m[2].trim();
-    const cardUrl = m[3];
-    const nameFromLabel = rawLabel.split(/\s+Starting from:/i)[0]?.trim() ?? rawLabel;
-    const priceMatch = rawLabel.match(/Starting from:\s*\$([\d.]+)/i);
-    return {
-      name: nameFromLabel,
-      imageUrl,
-      cardUrl,
-      fromPrice: priceMatch?.[1] ?? "",
-    };
-  } catch {
-    return null;
   }
 }
 
@@ -2162,13 +2119,12 @@ export default async function Home() {
                     className="mt-2 flex min-h-0 flex-1 items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
                     title="Open this listing on CardTrader"
                   >
-                    <Image
+                    <CardTraderHighlightImage
                       src={cardTraderBestSeller.imageUrl}
                       alt=""
                       width={70}
                       height={98}
                       className="h-16 w-auto shrink-0 rounded-md bg-slate-900 object-contain object-top shadow-inner"
-                      unoptimized
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold leading-snug text-white line-clamp-3">
