@@ -83,8 +83,16 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function weightedTokenHits(text: string, tokens: WeightedSignal[]) {
-  return tokens.reduce((sum, token) => sum + (token.pattern.test(text) ? token.weight : 0), 0);
+function weightedTokenHitsAcrossItems(items: NewsItem[], tokens: WeightedSignal[]) {
+  return items.reduce(
+    (sum, item) =>
+      sum +
+      tokens.reduce(
+        (itemSum, token) => itemSum + (token.pattern.test(item.title) ? token.weight : 0),
+        0,
+      ),
+    0,
+  );
 }
 
 function collectSignals(
@@ -128,10 +136,10 @@ function validateDate(dateStr: string) {
 function computeStats(items: NewsItem[]) {
   const titles = items.map((item) => item.title);
   const text = titles.join(" | ");
-  const eventHits = weightedTokenHits(text, EVENT_TOKENS);
-  const pressureHits = weightedTokenHits(text, PRESSURE_TOKENS);
-  const positiveHits = weightedTokenHits(text, POSITIVE_TOKENS);
-  const negativeHits = weightedTokenHits(text, NEGATIVE_TOKENS);
+  const eventHits = weightedTokenHitsAcrossItems(items, EVENT_TOKENS);
+  const pressureHits = weightedTokenHitsAcrossItems(items, PRESSURE_TOKENS);
+  const positiveHits = weightedTokenHitsAcrossItems(items, POSITIVE_TOKENS);
+  const negativeHits = weightedTokenHitsAcrossItems(items, NEGATIVE_TOKENS);
 
   const headlineCount = items.length;
   const uniqueSources = new Set(items.map((item) => item.source)).size;
@@ -140,7 +148,7 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
-  const eventCatalystScore = clamp(eventHits * 12.5, 0, 100);
+  const eventCatalystScore = clamp(100 * Math.tanh(eventHits / 10), 0, 100);
   const availabilityPressureScore = clamp(pressureHits * 14 + Math.log10(headlineCount + 1) * 7, 0, 100);
   const productStressScore = clamp(pressureHits * 17 + Math.max(0, negativeHits - positiveHits) * 4.5, 0, 100);
   const communitySentimentScore = clamp(
@@ -153,6 +161,19 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
+  const hasFlagshipBroadcast =
+    /\bpokemon direct|pok[eé]mon presents|nintendo direct|state of play|developer_direct\b/i.test(
+      text,
+    );
+  const hasMajorGameReveal =
+    /\b(two new games|2 new games|new game|new games|new title|revealed .*game|announced .*game|legends|generation 10|gen 10)\b/i.test(
+      text,
+    );
+  const catalystShock =
+    (hasFlagshipBroadcast ? 14 : 0) +
+    (hasMajorGameReveal ? 12 : 0) +
+    Math.max(0, eventCatalystScore - 65) * 0.35;
+  const sourcePenalty = uniqueSources <= 1 ? 4 : 0;
   const eventSignals = collectSignals(text, [
     { group: "event", tokens: EVENT_TOKENS },
     { group: "pressure", tokens: PRESSURE_TOKENS },
@@ -161,7 +182,7 @@ function computeStats(items: NewsItem[]) {
   ]);
 
   // Same 6-component weighting philosophy used by the main hype meter.
-  const dayScore = clamp(
+  const baseScore = clamp(
     Math.round(
       attentionScore * 0.2 +
         marketMomentumProxyScore * 0.25 +
@@ -173,6 +194,7 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
+  const dayScore = clamp(Math.round(baseScore + catalystShock - sourcePenalty), 0, 100);
   const sentiment = Math.round(communitySentimentScore);
 
   return {

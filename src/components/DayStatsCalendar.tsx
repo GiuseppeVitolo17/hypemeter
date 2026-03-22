@@ -34,7 +34,14 @@ const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // Standard yyyy-mm-dd format expected by the day-stats API.
 function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 // Month navigation helper anchored to first day to avoid overflow quirks.
@@ -47,7 +54,7 @@ function addMonths(date: Date, amount: number) {
 
 export default function DayStatsCalendar({ initialData, initialDate }: Props) {
   // Calendar is intentionally restricted to the last 5 years.
-  const now = new Date();
+  const now = startOfLocalDay(new Date());
   const minDate = new Date(now);
   minDate.setFullYear(minDate.getFullYear() - 5);
 
