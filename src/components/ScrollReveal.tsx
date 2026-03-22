@@ -9,7 +9,9 @@ type Props = {
 };
 
 export default function ScrollReveal({ children, className = "", delayMs = 0 }: Props) {
+  // Ref targets the DOM node observed for viewport intersection.
   const ref = useRef<HTMLDivElement | null>(null);
+  // Switches CSS class from hidden to revealed once entered viewport.
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -19,6 +21,7 @@ export default function ScrollReveal({ children, className = "", delayMs = 0 }: 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
+        // Optional stagger allows sequential reveals between sections.
         window.setTimeout(() => setVisible(true), delayMs);
         observer.unobserve(node);
       },

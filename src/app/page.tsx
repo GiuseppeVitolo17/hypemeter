@@ -39,8 +39,28 @@ type MarketSnapshot = {
   updatedAt: string | null;
 };
 
+type CalendarDayStats = {
+  date: string;
+  stats: {
+    headlineCount: number;
+    uniqueSources: number;
+    eventHits: number;
+    pressureHits: number;
+    sentiment: number;
+    dayScore: number;
+  };
+  headlines: Array<{
+    title: string;
+    link: string;
+    source: string;
+    pubDate: string;
+  }>;
+};
+
+// Revalidate the server-rendered homepage every 30 minutes.
 export const revalidate = 1800;
 
+// Curated Google News query tuned for Pokemon relevance and noise reduction.
 const NEWS_QUERY = encodeURIComponent(
   '("Pokemon" OR "Pokémon" OR "Pokemon GO" OR Nintendo) (game OR update OR event OR trailer OR release) -site:hotelier.com.py -site:propertyroom.com',
 );
@@ -81,16 +101,19 @@ const blockedTitleHints = [
   "buy now",
 ];
 
+// Keep every synthetic score in a strict 0-100 range.
 function clampScore(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+// Lightweight XML tag extractor used across RSS-style feeds.
 function readTag(itemXml: string, tag: string) {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i");
   const match = itemXml.match(regex);
   return match ? match[1].trim() : "";
 }
 
+// Decode common HTML/XML entities from RSS payloads.
 function decodeHtml(value: string) {
   return value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -103,6 +126,7 @@ function decodeHtml(value: string) {
     .trim();
 }
 
+// Some feeds append source in the title, this recovers it when <source> is missing.
 function extractSourceFromTitle(title: string) {
   const chunks = title.split(" - ");
   if (chunks.length < 2) {
@@ -111,6 +135,7 @@ function extractSourceFromTitle(title: string) {
   return chunks[chunks.length - 1].trim();
 }
 
+// Parse Google News RSS into typed objects and keep newest headlines first.
 function parseNews(xml: string): NewsItem[] {
   const items: NewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -138,6 +163,7 @@ function normalize(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+// Filter out low-signal commerce spam and noisy listing-style headlines.
 function isLowSignalItem(item: NewsItem) {
   const source = normalize(item.source);
   const title = normalize(item.title);
@@ -146,6 +172,7 @@ function isLowSignalItem(item: NewsItem) {
   return blockedSource || blockedTitle;
 }
 
+// Final newsroom curation pass: Pokemon-only, filtered noise, deduped by title+source.
 function curateNewsItems(items: NewsItem[]) {
   const deduped = new Map<string, NewsItem>();
   for (const item of items) {
@@ -167,6 +194,7 @@ function curateNewsItems(items: NewsItem[]) {
   return curated;
 }
 
+// Convert traffic strings like "120K"/"1.4M" into numeric values.
 function parseApproxTraffic(raw: string) {
   const normalized = raw.replace(/\+/g, "").trim().toUpperCase();
   const match = normalized.match(/^([\d.]+)\s*([KMB])?$/);
@@ -182,6 +210,7 @@ function parseApproxTraffic(raw: string) {
   return value * (multipliers[unit] ?? 1);
 }
 
+// Derive demand proxy from daily Google Trends RSS.
 async function fetchSearchInterestScore() {
   try {
     const response = await fetch(GOOGLE_TRENDS_DAILY_RSS, { next: { revalidate: 900 } });
@@ -207,6 +236,7 @@ async function fetchSearchInterestScore() {
   }
 }
 
+// Approximate card market momentum from daily change hints on key PriceCharting assets.
 async function fetchMarketMomentumScore() {
   try {
     const pages = await Promise.all(
@@ -241,6 +271,7 @@ async function fetchMarketMomentumScore() {
   }
 }
 
+// Detect catalyst intensity from Pokemon.com news language.
 async function fetchEventCatalystScore() {
   try {
     const response = await fetch(POKEMON_NEWS_URL, {
@@ -269,6 +300,7 @@ async function fetchEventCatalystScore() {
   }
 }
 
+// Build a simple sentiment ratio from two core Pokemon-related subreddits.
 async function fetchCommunitySentimentScore() {
   const extractTitles = (payload: string) => {
     try {
@@ -309,6 +341,7 @@ async function fetchCommunitySentimentScore() {
   }
 }
 
+// Convert publication date into age (hours) for recency weighting.
 function hoursAgo(dateString: string) {
   const timestamp = new Date(dateString).getTime();
   if (Number.isNaN(timestamp)) {
@@ -317,6 +350,7 @@ function hoursAgo(dateString: string) {
   return (Date.now() - timestamp) / (1000 * 60 * 60);
 }
 
+// Main composite scoring engine combining external and headline-derived components.
 function summarizeHype(
   items: NewsItem[],
   external: {
@@ -326,6 +360,8 @@ function summarizeHype(
     communitySentiment: number;
   },
 ) {
+  // Recency and scarcity keywords drive market pressure-style components.
+  const hasNews = items.length > 0;
   const recent24 = items.filter((item) => hoursAgo(item.pubDate) <= 24).length;
   const titleBlob = items.map((item) => normalize(item.title)).join(" | ");
   const selloutHits = [
@@ -341,13 +377,18 @@ function summarizeHype(
     (count, key) => count + (titleBlob.includes(key) ? 1 : 0),
     0,
   );
+  const activityFloor = clampScore(8 + (recent24 / 30) * 20);
+  const searchInterestScore = hasNews
+    ? Math.max(external.searchInterest, Math.min(activityFloor, 34))
+    : external.searchInterest;
+  const productStressScore = clampScore((stressHits / 5) * 100 + (recent24 / 40) * 12);
 
   const components: SignalComponent[] = [
     {
       id: "search_interest",
       label: "Search Interest",
       weight: 0.2,
-      score: external.searchInterest,
+      score: searchInterestScore,
       description: "Google Trends proxy for retail/fan demand.",
       group: "community",
     },
@@ -387,12 +428,13 @@ function summarizeHype(
       id: "product_stress",
       label: "Product Stress / Queue",
       weight: 0.1,
-      score: clampScore((stressHits / 5) * 100),
+      score: hasNews ? Math.max(6, productStressScore) : productStressScore,
       description: "Queue/reprint/restriction pressure in live coverage.",
       group: "market",
     },
   ];
 
+  // Weighted master score plus community/market sub-indices used by the UI.
   const score = clampScore(
     components.reduce((sum, component) => sum + component.score * component.weight, 0),
   );
@@ -409,6 +451,7 @@ function summarizeHype(
   return { score, indicators: components, communityScore, marketScore };
 }
 
+// Translate numeric score into dashboard regime label and short interpretation.
 function labelForScore(score: number) {
   if (score >= 90) return { label: "MANIA", vibe: "Demand pressure is extreme." };
   if (score >= 75) return { label: "FRENZY", vibe: "Strong acceleration across signals." };
@@ -418,6 +461,7 @@ function labelForScore(score: number) {
   return { label: "DEAD", vibe: "Low attention and low market pressure." };
 }
 
+// Synthetic long-cycle baseline model used for contextual 30-year sentiment framing.
 function buildThirtyYearCycle(currentYear: number) {
   const start = currentYear - 29;
   const cycle: YearScore[] = [];
@@ -462,6 +506,7 @@ function toneForSentiment(score: number) {
   return "defensive";
 }
 
+// Build 1M/1Y/5Y sentiment windows with different time-horizon sensitivities.
 function computeWindowSentiments(args: {
   score: number;
   communityScore: number;
@@ -483,6 +528,7 @@ function computeWindowSentiments(args: {
   const component = (id: string) =>
     components.find((entry) => entry.id === id)?.score ?? 50;
 
+  // 1M emphasizes fast variables (search/availability/release) and immediate slope.
   const monthImpulse =
     component("search_interest") * 0.3 +
     component("availability_pressure") * 0.25 +
@@ -491,11 +537,13 @@ function computeWindowSentiments(args: {
     component("product_stress") * 0.1;
   const oneMonth = clampScore(score * 0.45 + monthImpulse * 0.45 + cycleSlope * 1.5 + 5);
 
+  // 1Y reflects current regime blended with market/community state.
   const oneYearBase = avg(cycle30.slice(-3).map((y) => y.score));
   const oneYear = clampScore(
     score * 0.35 + oneYearBase * 0.35 + marketScore * 0.2 + communityScore * 0.1,
   );
 
+  // 5Y is intentionally conservative and mildly below 1Y for realism.
   const cycleRegimeShift = last5 - prev5;
   const structuralDrag = Math.max(0, 55 - last5) * 0.18;
   const downtrendPenalty = Math.max(0, -cycleRegimeShift) * 1.4;
@@ -536,12 +584,14 @@ function computeWindowSentiments(args: {
   return windows;
 }
 
+// Color ramp for the main progress bar by score regime.
 function meterColor(score: number) {
   if (score >= 70) return "from-fuchsia-500 via-red-500 to-orange-400";
   if (score >= 40) return "from-cyan-400 via-blue-500 to-purple-500";
   return "from-slate-400 via-slate-500 to-slate-700";
 }
 
+// Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
   const baselines: Record<number, number> = {
@@ -581,6 +631,7 @@ function buildBacktrackSeries(liveScore: number): YearScore[] {
   return data;
 }
 
+// UI formatter for sidecar market levels.
 function formatUsd(value: number | null) {
   if (value === null || Number.isNaN(value)) {
     return "N/A";
@@ -592,6 +643,7 @@ function formatUsd(value: number | null) {
   }).format(value);
 }
 
+// UI formatter for sidecar day growth percentages.
 function formatGrowthPct(value: number | null) {
   if (value === null || Number.isNaN(value)) {
     return "N/A";
@@ -600,6 +652,48 @@ function formatGrowthPct(value: number | null) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+// Build the initial calendar payload for "today" so it renders immediately on first load.
+function buildTodayCalendarStats(items: NewsItem[], liveHypeScore: number): CalendarDayStats {
+  const today = new Date().toISOString().slice(0, 10);
+  const text = items.map((item) => normalize(item.title)).join(" | ");
+  const eventHits = ["reveal", "release", "presents", "prerelease", "expansion"].reduce(
+    (sum, token) => sum + (text.includes(token) ? 1 : 0),
+    0,
+  );
+  const pressureHits = ["sold out", "preorder", "queue", "allocation", "reprint"].reduce(
+    (sum, token) => sum + (text.includes(token) ? 1 : 0),
+    0,
+  );
+  const positiveHits = ["hype", "surge", "launch", "strong", "record", "win"].reduce(
+    (sum, token) => sum + (text.includes(token) ? 1 : 0),
+    0,
+  );
+  const negativeHits = ["delay", "drop", "crash", "backlash", "scam", "lawsuit"].reduce(
+    (sum, token) => sum + (text.includes(token) ? 1 : 0),
+    0,
+  );
+  const headlineCount = items.length;
+  const uniqueSources = new Set(items.map((item) => item.source)).size;
+  const sentiment = clampScore(
+    Math.round(50 + (positiveHits - negativeHits) * 8 + Math.log10(headlineCount + 1) * 12),
+  );
+
+  return {
+    date: today,
+    stats: {
+      headlineCount,
+      uniqueSources,
+      eventHits,
+      pressureHits,
+      sentiment,
+      // Explicitly aligned with the homepage live hype score for today's preloaded card.
+      dayScore: liveHypeScore,
+    },
+    headlines: items.slice(0, 8),
+  };
+}
+
+// Fetch live S&P 500 + BTC snapshot with layered fallbacks (Stooq -> CoinGecko/Yahoo).
 async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const fallback: MarketSnapshot = {
     sp500: null,
@@ -609,6 +703,7 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     updatedAt: null,
   };
 
+  // Parse Stooq CSV line and derive close + session growth.
   const parseStooqMetrics = (csv: string) => {
     const line = csv.trim().split("\n")[0] ?? "";
     const cols = line.split(",");
@@ -706,6 +801,7 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 }
 
 export default async function Home() {
+  // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
   let searchInterest = 35;
   let marketMomentum = 50;
@@ -726,6 +822,7 @@ export default async function Home() {
     items = [];
   }
 
+  // Pull independent external signals in parallel to minimize latency.
   [searchInterest, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
     fetchSearchInterestScore(),
     fetchMarketMomentumScore(),
@@ -750,7 +847,9 @@ export default async function Home() {
   const market = await fetchMarketSnapshot();
   const mood = labelForScore(score);
   const history = buildBacktrackSeries(score);
+  const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score);
 
+  // Single timestamp used as visible "last refreshed" marker in header.
   const updatedAt = new Date().toLocaleString("en-US", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -1000,7 +1099,10 @@ export default async function Home() {
         </ScrollReveal>
 
         <ScrollReveal delayMs={150}>
-          <DayStatsCalendar />
+          <DayStatsCalendar
+            initialDate={todayCalendarStats.date}
+            initialData={todayCalendarStats}
+          />
         </ScrollReveal>
 
         <ScrollReveal delayMs={180}>

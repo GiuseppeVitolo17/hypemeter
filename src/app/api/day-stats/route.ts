@@ -9,12 +9,14 @@ type NewsItem = {
 
 const MAX_YEARS = 5;
 
+// Small XML helper to extract a single tag value from an <item> block.
 function readTag(itemXml: string, tag: string) {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i");
   const match = itemXml.match(regex);
   return match ? match[1].trim() : "";
 }
 
+// Decode RSS entities and strip remaining HTML tags from feed content.
 function decodeHtml(value: string) {
   return value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -27,6 +29,7 @@ function decodeHtml(value: string) {
     .trim();
 }
 
+// Parse feed XML into typed news entries for scoring.
 function parseNews(xml: string): NewsItem[] {
   const items: NewsItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -49,10 +52,12 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Ensure Google query date syntax uses UTC yyyy-mm-dd.
 function toIsoDate(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+// Validate date input and enforce rolling 5-year range.
 function validateDate(dateStr: string) {
   const parsed = new Date(`${dateStr}T00:00:00Z`);
   if (Number.isNaN(parsed.getTime())) {
@@ -69,6 +74,7 @@ function validateDate(dateStr: string) {
   return { ok: true as const, parsed };
 }
 
+// Convert headline language into simple day-level market/sentiment metrics.
 function computeStats(items: NewsItem[]) {
   const text = items.map((item) => item.title.toLowerCase()).join(" | ");
   const eventHits = ["reveal", "release", "presents", "prerelease", "expansion"].reduce(
@@ -95,13 +101,25 @@ function computeStats(items: NewsItem[]) {
     0,
     100,
   );
+
+  // Normalize each signal so score does not explode with raw headline count.
+  const headlineIntensity = clamp(
+    Math.round((Math.log10(headlineCount + 1) / Math.log10(26)) * 100),
+    0,
+    100,
+  );
+  const sourceDiversity = clamp(Math.round((uniqueSources / 12) * 100), 0, 100);
+  const eventIntensity = clamp(eventHits * 24, 0, 100);
+  const pressureIntensity = clamp(pressureHits * 22, 0, 100);
+
+  // Weighted blend tuned to keep "normal days" in a realistic mid range.
   const dayScore = clamp(
     Math.round(
-      headlineCount * 4 +
-        uniqueSources * 2 +
-        eventHits * 9 +
-        pressureHits * 7 +
-        (sentiment - 50) * 0.6,
+      headlineIntensity * 0.35 +
+        sourceDiversity * 0.2 +
+        eventIntensity * 0.2 +
+        pressureIntensity * 0.15 +
+        sentiment * 0.1,
     ),
     0,
     100,
@@ -118,6 +136,7 @@ function computeStats(items: NewsItem[]) {
 }
 
 export async function GET(request: NextRequest) {
+  // Query param driving stats computation for a specific calendar day.
   const date = request.nextUrl.searchParams.get("date");
   if (!date) {
     return NextResponse.json({ error: "Missing date query param" }, { status: 400 });
@@ -138,6 +157,7 @@ export async function GET(request: NextRequest) {
   const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
 
   try {
+    // Force fresh fetch for selected day so user sees runtime-computed data.
     const response = await fetch(url, {
       next: { revalidate: 0 },
       headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },

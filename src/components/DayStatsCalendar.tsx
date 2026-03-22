@@ -20,12 +20,19 @@ type DayStatsResponse = {
   }>;
 };
 
+type Props = {
+  initialData?: DayStatsResponse;
+  initialDate?: string;
+};
+
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// Standard yyyy-mm-dd format expected by the day-stats API.
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+// Month navigation helper anchored to first day to avoid overflow quirks.
 function addMonths(date: Date, amount: number) {
   const copy = new Date(date);
   copy.setDate(1);
@@ -33,17 +40,19 @@ function addMonths(date: Date, amount: number) {
   return copy;
 }
 
-export default function DayStatsCalendar() {
+export default function DayStatsCalendar({ initialData, initialDate }: Props) {
+  // Calendar is intentionally restricted to the last 5 years.
   const now = new Date();
   const minDate = new Date(now);
   minDate.setFullYear(minDate.getFullYear() - 5);
 
   const [visibleMonth, setVisibleMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1));
-  const [selectedDate, setSelectedDate] = useState(isoDate(now));
-  const [data, setData] = useState<DayStatsResponse | null>(null);
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? isoDate(now));
+  const [data, setData] = useState<DayStatsResponse | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch selected-day stats; keeps UI robust with loading/error state transitions.
   const loadDay = useCallback(async (date: string) => {
     let active = true;
     setLoading(true);
@@ -67,9 +76,17 @@ export default function DayStatsCalendar() {
   }, []);
 
   useEffect(() => {
+    // Keep today's preload (matching homepage hype model) without immediate refetch.
+    if (initialData && selectedDate === initialData.date) {
+      setData(initialData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     void loadDay(selectedDate);
-  }, [loadDay, selectedDate]);
+  }, [initialData, loadDay, selectedDate]);
 
+  // Build a complete month grid (including leading/trailing days for alignment).
   const daysGrid = useMemo(() => {
     const firstDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1);
     const lastDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0);

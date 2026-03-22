@@ -21,12 +21,14 @@ function zoneForScore(score: number) {
 }
 
 export default function HypeBacktrackingChart({ history }: Props) {
+  // SVG dimensions and drawing paddings for stable scaling across breakpoints.
   const chartWidth = 940;
   const chartHeight = 250;
   const padX = 20;
   const padY = 18;
   const safeWidth = chartWidth - padX * 2;
   const safeHeight = chartHeight - padY * 2;
+  // Precompute render coordinates from score values (0-100) to SVG space.
   const points = useMemo(() => {
     return history.map((entry, idx) => {
       const x = padX + (idx / Math.max(history.length - 1, 1)) * safeWidth;
@@ -36,6 +38,7 @@ export default function HypeBacktrackingChart({ history }: Props) {
   }, [history, safeHeight, safeWidth]);
 
   const polyline = points.map((point) => `${point.x},${point.y}`).join(" ");
+  // Active point powers tooltip and stat cards; defaults to latest year.
   const [activeIndex, setActiveIndex] = useState(Math.max(points.length - 1, 0));
   const active = points[activeIndex] ?? null;
   const prev = activeIndex > 0 ? points[activeIndex - 1] : null;
@@ -101,6 +104,7 @@ export default function HypeBacktrackingChart({ history }: Props) {
           width={safeWidth}
           height={safeHeight}
           fill="transparent"
+          // Allow hover scrubbing across the full chart area, not just circles.
           onMouseMove={(event) => {
             if (points.length <= 1) return;
             const bounds = event.currentTarget.getBoundingClientRect();
