@@ -122,16 +122,35 @@ export default function BacktrackMarketSection({ history, events, marketOverlay,
           </div>
 
           <p className="mt-4 text-[11px] text-slate-500">
-            Quotes match{" "}
+            S&amp;P 500 and Bitcoin levels/% vs prior close follow{" "}
+            <a
+              href="https://finance.yahoo.com/quote/%5EGSPC/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400/90 underline-offset-2 hover:underline"
+            >
+              Yahoo ^GSPC
+            </a>{" "}
+            and{" "}
+            <a
+              href="https://finance.yahoo.com/quote/BTC-USD/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400/90 underline-offset-2 hover:underline"
+            >
+              BTC-USD
+            </a>{" "}
+            (same API as the site; can be delayed). Nintendo matches{" "}
             <a
               href="https://finance.yahoo.com/quote/NTDOY/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-cyan-400/90 underline-offset-2 hover:underline"
             >
-              Yahoo Finance NTDOY
+              Yahoo NTDOY
             </a>{" "}
-            (OTC can be delayed). Monthly overlay for chart; fallback: Stooq + CoinGecko.
+            (OTC can be delayed). Chart overlay is monthly; if Yahoo fails, price fallbacks: Stooq (indices) /
+            CoinGecko (BTC)—% may be omitted for BTC without Yahoo.
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
             Last market update: {market.updatedAt ?? "Unavailable"}

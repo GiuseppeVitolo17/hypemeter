@@ -111,7 +111,11 @@ const NEWS_QUERY = encodeURIComponent(
 const NEWS_URL = `https://news.google.com/rss/search?q=${NEWS_QUERY}&hl=en-US&gl=US&ceid=US:en`;
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD,NTDOY";
-/** Dedicated NTDOY quote (same feed as finance.yahoo.com/quote/NTDOY) — batch responses sometimes omit OTC fields. */
+/** Dedicated quotes (same v7 feed as Yahoo Finance quote pages — batch can omit fields). */
+const YAHOO_QUOTE_GSPC_ONLY =
+  "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC";
+const YAHOO_QUOTE_BTC_ONLY =
+  "https://query1.finance.yahoo.com/v7/finance/quote?symbols=BTC-USD";
 const YAHOO_QUOTE_NTDY_ONLY =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=NTDOY";
 /** Browser-like UA avoids empty quoteResponse for some Yahoo symbols. */
@@ -1908,13 +1912,15 @@ function parseYahooSymbol(
   };
 }
 
-function mergeNtdyQuotes(
+/** Prefer dedicated response; else batch (same symbols as finance.yahoo.com quote pages). */
+function mergeYahooQuotes(
   dedicated: YahooFinanceQuoteBundle,
   batch: YahooFinanceQuoteBundle,
+  symbol: string,
 ): ReturnType<typeof parseYahooSymbol> {
-  const a = parseYahooSymbol(dedicated, "NTDOY");
+  const a = parseYahooSymbol(dedicated, symbol);
   if (a.price !== null || a.previousClose !== null) return a;
-  return parseYahooSymbol(batch, "NTDOY");
+  return parseYahooSymbol(batch, symbol);
 }
 
 /** Last two daily closes from Yahoo v8 chart (skips nulls — weekends/holidays). */
@@ -1959,7 +1965,7 @@ async function fetchNintendoFromYahooChart(): Promise<{
   }
 }
 
-// Fetch live S&P 500 + BTC + Nintendo ADR (NTDOY) with layered fallbacks (Stooq -> CoinGecko/Yahoo).
+// Fetch live S&P 500 + BTC + Nintendo ADR (NTDOY). Yahoo v7 quote first (matches Yahoo Finance pages); Stooq/CoinGecko fallback.
 async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const fallback: MarketSnapshot = {
     sp500: null,
@@ -1995,10 +2001,18 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     });
 
   try {
-    const [spRes, btcRes, yahooRes, ntdyQuoteRes] = await Promise.all([
+    const [spRes, btcRes, yahooBatchRes, gsRes, btcDedRes, ntdyRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(STOOQ_BTC_URL, { next: { revalidate: 900 } }),
       fetch(MARKET_QUOTES_URL, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_GSPC_ONLY, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_BTC_ONLY, {
         next: { revalidate: 300 },
         headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
@@ -2009,13 +2023,21 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     ]);
     const spx = spRes.ok ? parseStooqMetrics(await spRes.text()) : { close: null, growthPct: null };
     const btc = btcRes.ok ? parseStooqMetrics(await btcRes.text()) : { close: null, growthPct: null };
-    const yahooData = yahooRes.ok
-      ? ((await yahooRes.json()) as YahooFinanceQuoteBundle)
+    const yahooData = yahooBatchRes.ok
+      ? ((await yahooBatchRes.json()) as YahooFinanceQuoteBundle)
       : {};
-    const ntdyDedicated = ntdyQuoteRes.ok
-      ? ((await ntdyQuoteRes.json()) as YahooFinanceQuoteBundle)
-      : {};
-    const yahooNtdy = mergeNtdyQuotes(ntdyDedicated, yahooData);
+    const gsJson = gsRes.ok ? ((await gsRes.json()) as YahooFinanceQuoteBundle) : {};
+    const btcJson = btcDedRes.ok ? ((await btcDedRes.json()) as YahooFinanceQuoteBundle) : {};
+    const ntdyJson = ntdyRes.ok ? ((await ntdyRes.json()) as YahooFinanceQuoteBundle) : {};
+    const yahooGs = mergeYahooQuotes(gsJson, yahooData, "^GSPC");
+    const yahooBtc = mergeYahooQuotes(btcJson, yahooData, "BTC-USD");
+    const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
+    const sp500 = yahooGs.price ?? spx.close;
+    const sp500GrowthPct =
+      (yahooGs.price !== null ? yahooGs.growthPct : null) ?? spx.growthPct;
+    const bitcoin = yahooBtc.price ?? btc.close;
+    const bitcoinGrowthPct =
+      (yahooBtc.price !== null ? yahooBtc.growthPct : null) ?? btc.growthPct;
     let nintendo = yahooNtdy.price;
     let nintendoGrowthPct = yahooNtdy.growthPct;
     let nintendoPreviousClose = yahooNtdy.previousClose;
@@ -2033,16 +2055,14 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         if (nintendoGrowthPct === null && chart.growthPct !== null) nintendoGrowthPct = chart.growthPct;
       }
     }
-    const sp500 = spx.close;
-    const bitcoin = btc.close;
     if (sp500 !== null && bitcoin !== null) {
       return {
         sp500,
         bitcoin,
         nintendo,
         nintendoPreviousClose,
-        sp500GrowthPct: spx.growthPct,
-        bitcoinGrowthPct: btc.growthPct,
+        sp500GrowthPct,
+        bitcoinGrowthPct,
         nintendoGrowthPct,
         updatedAt: stamp(),
       };
@@ -2052,10 +2072,18 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   }
 
   try {
-    const [spRes, btcRes, yahooRes, ntdyQuoteRes] = await Promise.all([
+    const [spRes, btcRes, yahooBatchRes, gsRes, btcDedRes, ntdyRes] = await Promise.all([
       fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
       fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
       fetch(MARKET_QUOTES_URL, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_GSPC_ONLY, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": YAHOO_FINANCE_UA },
+      }),
+      fetch(YAHOO_QUOTE_BTC_ONLY, {
         next: { revalidate: 300 },
         headers: { "user-agent": YAHOO_FINANCE_UA },
       }),
@@ -2068,17 +2096,22 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     const btcData = btcRes.ok
       ? ((await btcRes.json()) as { bitcoin?: { usd?: number } })
       : {};
-    const yahooData = yahooRes.ok
-      ? ((await yahooRes.json()) as YahooFinanceQuoteBundle)
+    const yahooData = yahooBatchRes.ok
+      ? ((await yahooBatchRes.json()) as YahooFinanceQuoteBundle)
       : {};
-    const ntdyDedicated = ntdyQuoteRes.ok
-      ? ((await ntdyQuoteRes.json()) as YahooFinanceQuoteBundle)
-      : {};
+    const gsJson = gsRes.ok ? ((await gsRes.json()) as YahooFinanceQuoteBundle) : {};
+    const btcJson = btcDedRes.ok ? ((await btcDedRes.json()) as YahooFinanceQuoteBundle) : {};
+    const ntdyJson = ntdyRes.ok ? ((await ntdyRes.json()) as YahooFinanceQuoteBundle) : {};
+    const yahooGs = mergeYahooQuotes(gsJson, yahooData, "^GSPC");
+    const yahooBtc = mergeYahooQuotes(btcJson, yahooData, "BTC-USD");
+    const yahooNtdy = mergeYahooQuotes(ntdyJson, yahooData, "NTDOY");
     const spx = parseStooqMetrics(spText);
-    const sp500 = spx.close;
-    const yahooBtc = parseYahooSymbol(yahooData, "BTC-USD");
-    const yahooNtdy = mergeNtdyQuotes(ntdyDedicated, yahooData);
-    const bitcoin = btcData.bitcoin?.usd ?? yahooBtc.price;
+    const sp500 = yahooGs.price ?? spx.close;
+    const sp500GrowthPct =
+      (yahooGs.price !== null ? yahooGs.growthPct : null) ?? spx.growthPct;
+    const bitcoin = yahooBtc.price ?? btcData.bitcoin?.usd ?? null;
+    const bitcoinGrowthPct =
+      yahooBtc.price !== null ? yahooBtc.growthPct : null;
     let nintendo = yahooNtdy.price;
     let nintendoGrowthPct = yahooNtdy.growthPct;
     let nintendoPreviousClose = yahooNtdy.previousClose;
@@ -2096,17 +2129,14 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         if (nintendoGrowthPct === null && chart.growthPct !== null) nintendoGrowthPct = chart.growthPct;
       }
     }
-    const hasValues =
-      sp500 !== null && !Number.isNaN(sp500) && bitcoin !== null && !Number.isNaN(bitcoin);
-
-    if (hasValues) {
+    if (sp500 !== null && bitcoin !== null) {
       return {
         sp500,
         bitcoin,
         nintendo,
         nintendoPreviousClose,
-        sp500GrowthPct: spx.growthPct,
-        bitcoinGrowthPct: yahooBtc.growthPct,
+        sp500GrowthPct,
+        bitcoinGrowthPct,
         nintendoGrowthPct,
         updatedAt: stamp(),
       };
