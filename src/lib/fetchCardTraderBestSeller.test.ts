@@ -3,7 +3,20 @@ import {
   extractBestSellersSection,
   parseCardTraderBestSellerFromText,
   pickBestCardImageUrl,
+  sanitizeCardHighlightName,
 } from "./fetchCardTraderBestSeller";
+
+describe("sanitizeCardHighlightName", () => {
+  it("removes leading .jpg) from broken markdown", () => {
+    expect(sanitizeCardHighlightName(".jpg) Gloom Obsidian Flames")).toBe(
+      "Gloom Obsidian Flames",
+    );
+  });
+  it("removes leading .png) and ](url)", () => {
+    expect(sanitizeCardHighlightName("](https://cdn/x.png) Card Title")).toBe("Card Title");
+    expect(sanitizeCardHighlightName(".png) Pikachu")).toBe("Pikachu");
+  });
+});
 
 describe("fetchCardTraderBestSeller", () => {
   it("extractBestSellersSection finds markdown block", () => {

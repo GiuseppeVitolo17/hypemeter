@@ -94,6 +94,24 @@ function gatherCardProductUrls(section: string): string[] {
   return [...new Set(out)].filter((u) => looksLikeCardProductUrl(u));
 }
 
+/**
+ * Strip Jina/markdown junk before the real card title (e.g. ".jpg) Gloom …", "](url.png) …").
+ */
+export function sanitizeCardHighlightName(raw: string): string {
+  let s = raw.trim();
+  if (!s) return "";
+  // Trailing link close + URL in parens often leaks into the label
+  s = s.replace(/^\]\([^)]*\)\s*/g, "");
+  // ".jpg)" / ".png)" left when markdown breaks across lines
+  s = s.replace(/^\.(?:png|jpe?g|webp|gif)\)\s*/i, "");
+  // Lone extension at start
+  s = s.replace(/^\.(?:png|jpe?g|webp)\s+/i, "");
+  // Any remaining "](...image...)" prefix
+  s = s.replace(/^\]\([^)]*\.(?:png|jpe?g|webp|gif)[^)]*\)\s*/i, "");
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 /** Markdown images + HTML img src (relative or absolute). */
 function gatherImageCandidates(section: string): string[] {
   const out: string[] = [];
@@ -112,7 +130,8 @@ function buildResult(
   cardUrl: string,
   fallbackName: string,
 ): CardTraderBestSeller {
-  const nameFromLabel = rawLabel.split(/\s+Starting from:/i)[0]?.trim() || fallbackName;
+  const beforePrice = rawLabel.split(/\s+Starting from:/i)[0]?.trim() || fallbackName;
+  const nameFromLabel = sanitizeCardHighlightName(beforePrice);
   const priceMatch = rawLabel.match(/Starting from:\s*\$([\d.]+)/i);
   return {
     name: nameFromLabel || "Featured card",

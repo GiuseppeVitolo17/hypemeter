@@ -90,7 +90,6 @@ function deriveFallbackYearSpotlight(
 ): string {
   const h = history[idx];
   if (!h) return "—";
-  const prev = idx > 0 ? history[idx - 1] : null;
   const beat = mainEventLabelForYear(h.year);
   const scores = history.map((x) => x.score);
   const seriesMax = Math.max(...scores);
@@ -98,10 +97,6 @@ function deriveFallbackYearSpotlight(
 
   if (localPeakSet.has(idx)) {
     return `${beat} · hype peak`;
-  }
-  if (prev && Math.abs(h.score - prev.score) >= 14) {
-    const d = h.score - prev.score;
-    return d >= 0 ? `Strong upswing +${d}` : `Pullback ${Math.abs(d)}`;
   }
   if (history.length > 1 && h.score === seriesMax) return `${beat} · window high`;
   if (history.length > 1 && h.score === seriesMin) return `${beat} · window low`;
