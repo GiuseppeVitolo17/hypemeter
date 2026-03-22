@@ -1,6 +1,16 @@
 import { unstable_cache } from "next/cache";
 import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
-import { imageBytesLookLikeRaster } from "@/lib/cardHighlightImageVerify";
+import {
+  imageBytesLookLikeRaster,
+  looksLikeHtmlResponse,
+} from "@/lib/cardHighlightImageVerify";
+
+/** Trust server `Content-Type` for common raster images (AVIF may fail magic-byte heuristics). */
+function isTrustedRasterContentType(raw: string): boolean {
+  const base = raw.split(/[;]/)[0]?.trim().toLowerCase() ?? "";
+  if (base === "image/svg+xml") return false;
+  return /^image\/(jpeg|jpg|pjpeg|png|gif|webp|avif|x-png|bmp|tiff|heic|heif)$/i.test(base);
+}
 
 /** Only fetch images from CardTrader hosts (avoid open proxy). */
 export function isAllowedCardTraderImageUrl(url: string): boolean {
@@ -46,22 +56,38 @@ export async function fetchCardTraderImageBytesUncached(imageUrl: string): Promi
   if (body.length < 32) {
     throw new Error("card_highlight_image: body too small");
   }
-  if (!imageBytesLookLikeRaster(body)) {
+  if (looksLikeHtmlResponse(body)) {
+    throw new Error("card_highlight_image: upstream returned HTML (blocked or wrong URL)");
+  }
+
+  const contentType =
+    res.headers.get("content-type")?.split(";")[0]?.trim() ?? "application/octet-stream";
+  if (contentType.includes("text/html")) {
+    throw new Error("card_highlight_image: upstream returned HTML Content-Type");
+  }
+
+  if (isTrustedRasterContentType(contentType)) {
+    return { body, contentType };
+  }
+
+  if (
+    contentType === "application/octet-stream" ||
+    contentType === "binary/octet-stream" ||
+    !contentType.startsWith("image/")
+  ) {
+    if (imageBytesLookLikeRaster(body)) {
+      return { body, contentType: contentType.startsWith("image/") ? contentType : "image/jpeg" };
+    }
     throw new Error(
       "card_highlight_image: response is not a known image format (likely HTML/error from upstream)",
     );
   }
-  let contentType =
-    res.headers.get("content-type")?.split(";")[0]?.trim() ?? "image/jpeg";
-  if (contentType.includes("text/html")) {
-    throw new Error("card_highlight_image: upstream returned HTML (blocked or wrong URL)");
+
+  if (contentType.startsWith("image/") && imageBytesLookLikeRaster(body)) {
+    return { body, contentType };
   }
-  if (!contentType.startsWith("image/")) {
-    if (contentType === "application/octet-stream" || contentType === "binary/octet-stream") {
-      contentType = "image/jpeg";
-    }
-  }
-  return { body, contentType };
+
+  throw new Error("card_highlight_image: unexpected Content-Type or not a raster image");
 }
 
 /**

@@ -14,4 +14,13 @@ describe("imageBytesLookLikeRaster", () => {
     const b = Buffer.from("<!DOCTYPE html><html>", "utf8");
     expect(imageBytesLookLikeRaster(b)).toBe(false);
   });
+
+  it("accepts ISO BMFF ftyp (AVIF container)", () => {
+    const b = Buffer.alloc(40);
+    b[4] = 0x66;
+    b[5] = 0x74;
+    b[6] = 0x79;
+    b[7] = 0x70;
+    expect(imageBytesLookLikeRaster(b)).toBe(true);
+  });
 });

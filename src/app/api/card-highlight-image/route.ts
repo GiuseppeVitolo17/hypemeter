@@ -1,6 +1,9 @@
 import { cardHighlightCalendarDayKey } from "@/lib/cardHighlightCalendarDay";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
-import { getCachedCardHighlightImage } from "@/lib/cardHighlightImageCache";
+import {
+  getCachedCardHighlightImage,
+  isAllowedCardTraderImageUrl,
+} from "@/lib/cardHighlightImageCache";
 import { CARD_TRADER_HIGHLIGHT_CACHE_SEC } from "@/lib/homePageCacheConfig";
 
 export const runtime = "nodejs";
@@ -35,20 +38,12 @@ export async function GET() {
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown";
-    if (process.env.NODE_ENV === "development" || process.env.ENABLE_DEBUG_CARDTRADER === "1") {
-      return new Response(
-        JSON.stringify({
-          error: "card_highlight_image",
-          message: msg,
-          imageUrl: seller.imageUrl,
-          calendarDayKey: dayKey,
-        }),
-        {
-          status: 502,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[card-highlight-image] proxy failed, redirecting to origin:", err);
+    }
+    // Browser <img> cannot use JSON errors — fall back to direct CardTrader URL (may work when server fetch is blocked).
+    if (isAllowedCardTraderImageUrl(seller.imageUrl)) {
+      return Response.redirect(seller.imageUrl, 302);
     }
     return new Response(null, { status: 502 });
   }

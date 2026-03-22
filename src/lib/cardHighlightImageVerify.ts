@@ -1,8 +1,22 @@
 /**
+ * ISO BMFF `ftyp` (AVIF/HEIF) — CardTrader may serve AVIF.
+ */
+export function looksLikeIsoBmffFtyp(body: Buffer): boolean {
+  if (body.length < 12) return false;
+  return (
+    body[4] === 0x66 &&
+    body[5] === 0x74 &&
+    body[6] === 0x79 &&
+    body[7] === 0x70
+  );
+}
+
+/**
  * Confirm downloaded bytes are a common raster format (not HTML/JSON error body).
  */
 export function imageBytesLookLikeRaster(body: Buffer): boolean {
   if (body.length < 12) return false;
+  if (looksLikeIsoBmffFtyp(body)) return true;
   // JPEG
   if (body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) return true;
   // PNG
@@ -13,4 +27,9 @@ export function imageBytesLookLikeRaster(body: Buffer): boolean {
   // WEBP: RIFF....WEBP
   if (body.toString("ascii", 0, 4) === "RIFF" && body.toString("ascii", 8, 12) === "WEBP") return true;
   return false;
+}
+
+export function looksLikeHtmlResponse(body: Buffer): boolean {
+  const head = body.toString("ascii", 0, Math.min(128, body.length)).trimStart().toLowerCase();
+  return head.startsWith("<!doctype") || head.startsWith("<html") || head.startsWith("<head");
 }
