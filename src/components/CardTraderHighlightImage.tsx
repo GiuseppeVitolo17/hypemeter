@@ -24,7 +24,8 @@ type Props = {
 };
 
 /**
- * CardTrader CDNs / querystrings sometimes break Next/Image; on error we fall back to a local SVG.
+ * Same-origin `/api/card-highlight-image` uses a plain `<img>` (Next/Image can fail on dynamic API routes).
+ * External CardTrader URLs still go through next/image + unoptimized when used.
  */
 export function CardTraderHighlightImage({ src, alt, width, height, className }: Props) {
   const [usePlaceholder, setUsePlaceholder] = useState(!src?.trim());
@@ -34,6 +35,23 @@ export function CardTraderHighlightImage({ src, alt, width, height, className }:
   }, []);
 
   const effective = usePlaceholder ? PLACEHOLDER : resolveRemoteCardImageSrc(src);
+  const useApiProxy = !usePlaceholder && effective.startsWith("/api/card-highlight-image");
+
+  if (useApiProxy) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- intentional: reliable proxy loading
+      <img
+        src={effective}
+        alt={alt || "Card highlight"}
+        width={width}
+        height={height}
+        className={className}
+        loading="lazy"
+        decoding="async"
+        onError={onError}
+      />
+    );
+  }
 
   return (
     <Image
