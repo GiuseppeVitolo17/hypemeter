@@ -6,6 +6,7 @@ import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import Image from "next/image";
+import { unstable_noStore as noStore } from "next/cache";
 
 type NewsItem = {
   title: string;
@@ -1829,6 +1830,7 @@ function buildTodayCalendarStats(
 
 
 export default async function Home() {
+  noStore();
   // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
   let searchStats: SearchInterestStats = { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };

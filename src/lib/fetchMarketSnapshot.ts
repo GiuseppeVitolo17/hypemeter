@@ -26,16 +26,25 @@ const YAHOO_FINANCE_UA =
  * Bypass Next.js Data Cache for market quotes. `next: { revalidate: N }` was caching Yahoo/Stooq
  * responses for minutes → sidecar showed stale prices vs finance.yahoo.com.
  */
+const QUOTE_HEADERS = {
+  "user-agent": YAHOO_FINANCE_UA,
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+} as const;
+
 /** Exported for tests — must stay `cache: "no-store"` so quotes match Yahoo Finance. */
 export const YAHOO_QUOTE_FETCH: RequestInit = {
   cache: "no-store",
-  headers: { "user-agent": YAHOO_FINANCE_UA },
+  headers: { ...QUOTE_HEADERS },
 };
 export const STOOQ_QUOTE_FETCH: RequestInit = {
   cache: "no-store",
-  headers: { "user-agent": YAHOO_FINANCE_UA },
+  headers: { ...QUOTE_HEADERS },
 };
-export const COINGECKO_FETCH: RequestInit = { cache: "no-store" };
+export const COINGECKO_FETCH: RequestInit = {
+  cache: "no-store",
+  headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+};
 const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
 const STOOQ_BTC_URL = "https://stooq.com/q/l/?s=btcusd&i=d";
 /** Stooq line for Nintendo ADR — try US suffix then plain symbol (Stooq naming varies). */
@@ -83,8 +92,8 @@ async function fetchNintendoFromYahooChart(): Promise<{
 
 /**
  * Live S&P 500 + BTC + Nintendo ADR (NTDOY). Yahoo v7 first; Stooq/CoinGecko fallbacks.
- * Never merges demo constants — old `MARKET_SNAPSHOT_PAGE_FALLBACK` matched real quotes sometimes,
- * so the sidecar looked “stuck” on fake numbers even when APIs were fine.
+ * Numbers can look “unchanged” for minutes because Yahoo/Stooq are **delayed** and **session-based** —
+ * that matches finance.yahoo.com, not a bug. `updatedAt` includes seconds to verify fresh SSR.
  */
 export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const fallback: MarketSnapshot = {
@@ -98,10 +107,11 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
     updatedAt: null,
   };
 
+  /** Includes seconds so you can confirm each request is a fresh render (not stale HTML). */
   const stamp = () =>
     new Date().toLocaleString("en-US", {
       dateStyle: "medium",
-      timeStyle: "short",
+      timeStyle: "medium",
     });
 
   try {
