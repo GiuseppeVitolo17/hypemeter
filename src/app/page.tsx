@@ -1,5 +1,6 @@
 import HypeBacktrackingChart from "@/components/HypeBacktrackingChart";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
+import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
 import Image from "next/image";
 
@@ -2319,9 +2320,9 @@ export default async function Home() {
         <ScrollReveal delayMs={60}>
           <section className="grid min-w-0 items-stretch gap-6 lg:grid-cols-2">
           <div className="h-full rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift sm:p-7">
-            {/* Main read: score + circular meter stay on one row from `sm` up (no flex-wrap jump). */}
-            <div className="grid grid-cols-1 items-center gap-5 min-[420px]:grid-cols-[minmax(0,1fr)_auto] min-[420px]:gap-4 lg:gap-6">
-              <div className="min-w-0">
+            {/* Score column + fixed-width semicircular gauge column (room for ticks + needle). */}
+            <div className="grid grid-cols-1 items-start gap-5 pb-8 min-[420px]:grid-cols-[minmax(0,1fr)_minmax(12.75rem,15.75rem)] min-[420px]:gap-x-6 min-[420px]:gap-y-3 min-[420px]:pb-10 lg:gap-x-10">
+              <div className="min-w-0 space-y-1 pr-0 sm:pr-1">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
                   Current Hype
                 </p>
@@ -2336,19 +2337,11 @@ export default async function Home() {
                   {traderNarrative.summary}
                 </p>
               </div>
-              <div className="group relative mx-auto h-36 w-36 shrink-0 rounded-full p-2.5 ring-1 ring-white/20 min-[420px]:mx-0 sm:h-40 sm:w-40 sm:p-3">
-                <div
-                  className="h-full w-full rounded-full transition-transform duration-300 group-hover:scale-[1.03]"
-                  style={{
-                    background: `conic-gradient(#22d3ee ${score * 3.6}deg, #334155 0deg)`,
-                  }}
+              <div className="mx-auto flex w-full min-w-0 shrink-0 justify-center pb-2 min-[420px]:mx-0 min-[420px]:justify-end min-[420px]:pb-3 min-[420px]:pt-0.5">
+                <HypeGauge
+                  score={score}
+                  insight={`Hover insight: ${mood.label.toLowerCase()} • ${Math.max(0, 100 - score)} pts to max hype`}
                 />
-                <div className="absolute inset-7 flex items-center justify-center rounded-full bg-slate-900 text-xl font-black sm:inset-8 sm:text-2xl">
-                  {score}
-                </div>
-                <div className="pointer-events-none absolute -bottom-10 left-1/2 z-10 w-44 -translate-x-1/2 rounded-lg border border-cyan-400/30 bg-slate-900/95 px-2 py-1 text-center text-[10px] text-cyan-200 opacity-0 shadow-lg shadow-cyan-950/40 transition-opacity duration-200 group-hover:opacity-100">
-                  Hover insight: {mood.label.toLowerCase()} • {Math.max(0, 100 - score)} pts to max hype
-                </div>
               </div>
             </div>
             <div className="mt-4 h-4 overflow-hidden rounded-full bg-slate-700 sm:mt-5">
