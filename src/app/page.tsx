@@ -176,6 +176,12 @@ const CONTEXTUAL_SIGNAL_PATTERNS: Array<{
   { label: "Release Timing Chatter", group: "event", baseWeight: 1.8, regex: /\brelease date|coming soon|launch window|drops\b/i },
   { label: "High TCG Activity", group: "market", baseWeight: 1.6, regex: /\btcg|booster|set|card market\b/i },
   { label: "Community Buzz Spike", group: "community", baseWeight: 1.5, regex: /\bhype|massive|viral|trending\b/i },
+  {
+    label: "Nintendo / Switch Beat",
+    group: "event",
+    baseWeight: 1.38,
+    regex: /\bnintendo|switch\s*\d|switch online|eshop|download version\b/i,
+  },
 ];
 
 type WeightedHeadlineSignal = {
@@ -2032,7 +2038,7 @@ export default async function Home() {
                 <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
               </div>
               {cardTraderBestSeller ? (
-                <div className="flex h-full w-full max-w-[15rem] shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56 lg:max-w-none">
+                <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">
                     Card Highlight
                   </p>
