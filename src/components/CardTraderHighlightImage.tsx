@@ -16,51 +16,56 @@ function resolveRemoteCardImageSrc(src: string): string {
 }
 
 type Props = {
-  src: string;
+  /** Full image URL from parser (https://www.cardtrader.com/...). Empty → placeholder only. */
+  imageUrl: string;
   alt: string;
   width: number;
   height: number;
   className?: string;
 };
 
+type LoadMode = "proxy" | "direct" | "placeholder";
+
 /**
- * Same-origin `/api/card-highlight-image` uses a plain `<img>` (Next/Image can fail on dynamic API routes).
- * External CardTrader URLs still go through next/image + unoptimized when used.
+ * Try same-origin `/api/card-highlight-image` first (cached bytes, avoids hotlink quirks).
+ * On error, retry direct CardTrader URL; then placeholder.
  */
-export function CardTraderHighlightImage({ src, alt, width, height, className }: Props) {
-  const [usePlaceholder, setUsePlaceholder] = useState(!src?.trim());
+export function CardTraderHighlightImage({ imageUrl, alt, width, height, className }: Props) {
+  const direct = resolveRemoteCardImageSrc(imageUrl.trim());
+  const [mode, setMode] = useState<LoadMode>(() => (direct ? "proxy" : "placeholder"));
 
   const onError = useCallback(() => {
-    setUsePlaceholder(true);
-  }, []);
+    setMode((m) => {
+      if (m === "proxy" && direct) return "direct";
+      return "placeholder";
+    });
+  }, [direct]);
 
-  const effective = usePlaceholder ? PLACEHOLDER : resolveRemoteCardImageSrc(src);
-  const useApiProxy = !usePlaceholder && effective.startsWith("/api/card-highlight-image");
-
-  if (useApiProxy) {
+  if (!direct || mode === "placeholder") {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- intentional: reliable proxy loading
-      <img
-        src={effective}
-        alt={alt || "Card highlight"}
+      <Image
+        src={PLACEHOLDER}
+        alt={alt}
         width={width}
         height={height}
         className={className}
-        loading="lazy"
-        decoding="async"
-        onError={onError}
+        unoptimized
       />
     );
   }
 
+  const src = mode === "proxy" ? "/api/card-highlight-image" : direct;
+
   return (
-    <Image
-      src={effective}
-      alt={alt}
+    // eslint-disable-next-line @next/next/no-img-element -- proxy + direct CardTrader URLs
+    <img
+      src={src}
+      alt={alt || "Card highlight"}
       width={width}
       height={height}
       className={className}
-      unoptimized
+      loading="lazy"
+      decoding="async"
       onError={onError}
     />
   );

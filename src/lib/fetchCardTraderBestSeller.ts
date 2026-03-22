@@ -51,7 +51,7 @@ function isUndesirableCardImageUrl(url: string): boolean {
 function looksLikeCompleteBlueprintOrImageUrl(url: string): boolean {
   const n = normalizeCardtraderAssetUrl(url);
   const path = n.split(/[?#]/)[0] ?? "";
-  return /\.(png|jpe?g|webp|gif)$/i.test(path);
+  return /\.(png|jpe?g|webp|gif|avif)$/i.test(path);
 }
 
 function scoreCardImageCandidate(url: string): number {
@@ -148,7 +148,7 @@ export function sanitizeCardHighlightName(raw: string): string {
  * Filenames may contain `()` (e.g. `...(2).jpg`). Never use `[^)]+` for the URL — it cuts at the first `)`.
  */
 const BLUEPRINT_HTTPS_SOURCE =
-  "https://(?:www\\.)?cardtrader\\.com/uploads/blueprints/image/\\d+/[^?\\s#\"'<>]+\\.(?:png|jpe?g|webp|gif)(?:\\?[^\\s\"']*)?";
+  "https://(?:www\\.)?cardtrader\\.com/uploads/blueprints/image/\\d+/[^?\\s#\"'<>]+\\.(?:png|jpe?g|webp|gif|avif)(?:\\?[^\\s\"']*)?";
 
 function extractBlueprintImageUrls(section: string): string[] {
   const out: string[] = [];
@@ -156,12 +156,12 @@ function extractBlueprintImageUrls(section: string): string[] {
     out.push(m[0].trim());
   }
   for (const m of section.matchAll(
-    /\/\/(?:www\.)?cardtrader\.com(\/uploads\/blueprints\/image\/\d+\/[^?\s#"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"']*)?)/gi,
+    /\/\/(?:www\.)?cardtrader\.com(\/uploads\/blueprints\/image\/\d+\/[^?\s#"'<>]+\.(?:png|jpe?g|webp|gif|avif)(?:\?[^\s"']*)?)/gi,
   )) {
     out.push(normalizeCardtraderAssetUrl(m[1]));
   }
   for (const m of section.matchAll(
-    /(\/uploads\/blueprints\/image\/\d+\/[^?\s#"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"']*)?)/gi,
+    /(\/uploads\/blueprints\/image\/\d+\/[^?\s#"'<>]+\.(?:png|jpe?g|webp|gif|avif)(?:\?[^\s"']*)?)/gi,
   )) {
     out.push(m[1].trim());
   }
@@ -225,7 +225,7 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
 
   // 1) Classic: [![...](img)](card) — prefer blueprint URL (allows ")" in filename); else legacy [^)]+
   let mdWrapped = section.match(
-    /\[!\[[^\]]*\]\((https:\/\/(?:www\.)?cardtrader\.com\/uploads\/blueprints\/image\/\d+\/[^?\s#]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s)]*)?)\)\s*([\s\S]*?)\]\(([^)]+)\)/i,
+    /\[!\[[^\]]*\]\((https:\/\/(?:www\.)?cardtrader\.com\/uploads\/blueprints\/image\/\d+\/[^?\s#]+\.(?:png|jpe?g|webp|gif|avif)(?:\?[^\s)]*)?)\)\s*([\s\S]*?)\]\(([^)]+)\)/i,
   );
   if (!mdWrapped) {
     mdWrapped = section.match(/\[!\[[^\]]*\]\(([^)]+)\)\s*([\s\S]*?)\]\(([^)]+)\)/i);
@@ -278,12 +278,12 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
   // Prefer real card scan over `/assets/fallbacks/.../show.png` (listing flipper: back then front)
   // Do not use `[^\s)]+` here — blueprint filenames may contain `)` e.g. `show_x(2).jpg`.
   const looseHttpsImages = [
-    ...section.matchAll(/https:\/\/[^\s"']+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"']*)?/gi),
+    ...section.matchAll(/https:\/\/[^\s"']+\.(?:png|jpe?g|webp|gif|avif)(?:\?[^\s"']*)?/gi),
   ].map((m) => m[0]);
   /** Relative uploads paths in HTML (must become absolute for Next/Image). */
   const relativeUploadImages = [
     ...section.matchAll(
-      /(?:src|data-src)=["'](\/uploads\/[^"']+\.(?:png|jpe?g|webp|gif)(?:\?[^"']*)?)["']/gi,
+      /(?:src|data-src)=["'](\/uploads\/[^"']+\.(?:png|jpe?g|webp|gif|avif)(?:\?[^"']*)?)["']/gi,
     ),
   ].map((m) => m[1]);
   const allImageCandidates = [
