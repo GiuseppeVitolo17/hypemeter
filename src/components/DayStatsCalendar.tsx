@@ -113,6 +113,40 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
 
   const canPrev = visibleMonth > new Date(minDate.getFullYear(), minDate.getMonth(), 1);
   const canNext = visibleMonth < new Date(now.getFullYear(), now.getMonth(), 1);
+  const signalQuality = data
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            (Math.log10(data.stats.headlineCount + 1) / Math.log10(26)) * 70 +
+              (Math.min(data.stats.uniqueSources, 10) / 10) * 30,
+          ),
+        ),
+      )
+    : null;
+  const catalystIntensity = data
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            data.stats.eventHits * 10 +
+              (data.stats.eventSignals?.reduce((sum, signal) => sum + signal.weight, 0) ?? 0) * 4,
+          ),
+        ),
+      )
+    : null;
+  const catalystLabel =
+    catalystIntensity === null
+      ? "N/A"
+      : catalystIntensity >= 75
+        ? "Extreme"
+        : catalystIntensity >= 55
+          ? "High"
+          : catalystIntensity >= 35
+            ? "Moderate"
+            : "Low";
 
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-900 p-6">
@@ -210,13 +244,23 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                   <p className="text-base font-bold text-white">{data.stats.uniqueSources}</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-900 p-2">
-                  <p className="text-[10px] uppercase text-slate-500">Event Hits</p>
-                  <p className="text-base font-bold text-white">{data.stats.eventHits}</p>
+                  <p className="text-[10px] uppercase text-slate-500">Signal Quality</p>
+                  <p className="text-base font-bold text-white">{signalQuality ?? "N/A"}/100</p>
                 </div>
                 <div className="rounded-lg border border-white/10 bg-slate-900 p-2">
-                  <p className="text-[10px] uppercase text-slate-500">Pressure Hits</p>
-                  <p className="text-base font-bold text-white">{data.stats.pressureHits}</p>
+                  <p className="text-[10px] uppercase text-slate-500">Catalyst Level</p>
+                  <p className="text-base font-bold text-white">{catalystLabel}</p>
                 </div>
+              </div>
+
+              <div className="mt-2 rounded-lg border border-white/10 bg-slate-900/70 p-2">
+                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                  Advanced Diagnostics
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Event hits: <span className="font-semibold">{data.stats.eventHits}</span> •
+                  Pressure hits: <span className="font-semibold">{data.stats.pressureHits}</span>
+                </p>
               </div>
 
               {data.stats.eventSignals && data.stats.eventSignals.length > 0 ? (
