@@ -25,10 +25,15 @@ type MarketSnapshot = {
 
 export const revalidate = 1800;
 
-const NEWS_URL =
-  "https://news.google.com/rss/search?q=Pokemon&hl=en-US&gl=US&ceid=US:en";
+const NEWS_QUERY = encodeURIComponent(
+  '("Pokemon" OR "Pokémon" OR "Pokemon GO" OR Nintendo) (game OR update OR event OR trailer OR release) -site:hotelier.com.py -site:propertyroom.com',
+);
+const NEWS_URL = `https://news.google.com/rss/search?q=${NEWS_QUERY}&hl=en-US&gl=US&ceid=US:en`;
 const MARKET_QUOTES_URL =
   "https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,BTC-USD";
+const STOOQ_SP500_URL = "https://stooq.com/q/l/?s=%5Espx&i=d";
+const COINGECKO_BTC_URL =
+  "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd";
 
 const positiveKeywords = [
   "announced",
@@ -55,6 +60,38 @@ const negativeKeywords = [
   "outrage",
   "scam",
   "drop",
+];
+
+const blockedSourceHints = [
+  "hotelier.com.py",
+  "propertyroom",
+  "classified",
+  "marketplace",
+];
+
+const blockedTitleHints = [
+  "booster pack",
+  "for sale",
+  "psa 10",
+  "near mint",
+  "envío gratis",
+  "buy now",
+];
+
+const trustedSourceHints = [
+  "pokemon.com",
+  "nintendo",
+  "ign",
+  "gamespot",
+  "polygon",
+  "kotaku",
+  "eurogamer",
+  "comicbook",
+  "cnn",
+  "reuters",
+  "verge",
+  "forbes",
+  "business insider",
 ];
 
 function clampScore(value: number) {
@@ -110,6 +147,41 @@ function parseNews(xml: string): NewsItem[] {
   );
 }
 
+function normalize(value: string) {
+  return value.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function sourceLooksTrusted(source: string) {
+  const normalized = normalize(source);
+  return trustedSourceHints.some((hint) => normalized.includes(hint));
+}
+
+function isLowSignalItem(item: NewsItem) {
+  const source = normalize(item.source);
+  const title = normalize(item.title);
+  const blockedSource = blockedSourceHints.some((hint) => source.includes(hint));
+  const blockedTitle = blockedTitleHints.some((hint) => title.includes(hint));
+  return blockedSource || blockedTitle;
+}
+
+function curateNewsItems(items: NewsItem[]) {
+  const deduped = new Map<string, NewsItem>();
+  for (const item of items) {
+    if (isLowSignalItem(item)) {
+      continue;
+    }
+    const key = `${normalize(item.title)}|${normalize(item.source)}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, item);
+    }
+  }
+
+  const curated = Array.from(deduped.values()).sort(
+    (a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime(),
+  );
+  return curated;
+}
+
 function hoursAgo(dateString: string) {
   const timestamp = new Date(dateString).getTime();
   if (Number.isNaN(timestamp)) {
@@ -122,58 +194,61 @@ function summarizeHype(items: NewsItem[]) {
   const recent24 = items.filter((item) => hoursAgo(item.pubDate) <= 24).length;
   const rapid6 = items.filter((item) => hoursAgo(item.pubDate) <= 6).length;
   const rapid2 = items.filter((item) => hoursAgo(item.pubDate) <= 2).length;
-
-  const textBlob = items.map((item) => item.title.toLowerCase()).join(" | ");
-  const positiveHits = positiveKeywords.reduce(
-    (count, keyword) => count + (textBlob.includes(keyword) ? 1 : 0),
-    0,
-  );
-  const negativeHits = negativeKeywords.reduce(
-    (count, keyword) => count + (textBlob.includes(keyword) ? 1 : 0),
-    0,
+  const positiveHits = items.reduce((count, item) => {
+    const title = item.title.toLowerCase();
+    const hits = positiveKeywords.filter((keyword) => title.includes(keyword));
+    return count + hits.length;
+  }, 0);
+  const negativeHits = items.reduce((count, item) => {
+    const title = item.title.toLowerCase();
+    const hits = negativeKeywords.filter((keyword) => title.includes(keyword));
+    return count + hits.length;
+  }, 0);
+  const trustedSources = new Set(
+    items.filter((item) => sourceLooksTrusted(item.source)).map((item) => item.source),
   );
 
   const indicators: Indicator[] = [
     {
       id: "momentum",
       label: "News Momentum",
-      score: clampScore((recent24 / 12) * 100),
+      score: clampScore((recent24 / 18) * 100),
       description: "How many fresh Pokemon stories dropped in 24h.",
     },
     {
       id: "velocity",
       label: "Viral Velocity",
-      score: clampScore((rapid6 / 6) * 100),
+      score: clampScore((rapid6 / 10) * 100),
       description: "Spike of stories in the latest 6 hours.",
     },
     {
       id: "flash",
       label: "Flash Surge",
-      score: clampScore((rapid2 / 4) * 100),
+      score: clampScore((rapid2 / 6) * 100),
       description: "Ultra-fresh news burst in the latest 2 hours.",
     },
     {
       id: "positive",
       label: "W Signal",
-      score: clampScore((positiveHits / 8) * 100),
+      score: clampScore((positiveHits / 14) * 100),
       description: "Positive keywords in headlines (launches, reveals, wins).",
     },
     {
       id: "stability",
       label: "Drama Shield",
-      score: clampScore(100 - (negativeHits / 8) * 100),
+      score: clampScore(100 - (negativeHits / 10) * 100),
       description: "Fewer negative headlines means more stable hype.",
     },
     {
       id: "diversity",
-      label: "Source Spread",
-      score: clampScore((new Set(items.map((i) => i.source)).size / 12) * 100),
-      description: "How many outlets are covering Pokemon right now.",
+      label: "Source Quality",
+      score: clampScore((trustedSources.size / 10) * 100),
+      description: "Coverage depth across trusted outlets.",
     },
     {
       id: "depth",
       label: "Feed Depth",
-      score: clampScore((items.length / 20) * 100),
+      score: clampScore((items.length / 28) * 100),
       description: "Total number of Pokémon stories in the live feed.",
     },
   ];
@@ -277,42 +352,78 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
         "user-agent": "Mozilla/5.0 hypemeter",
       },
     });
-    if (!response.ok) {
-      return fallback;
-    }
-
-    const data = (await response.json()) as {
-      quoteResponse?: {
-        result?: Array<{
-          symbol?: string;
-          regularMarketPrice?: number;
-          regularMarketTime?: number;
-        }>;
+    if (response.ok) {
+      const data = (await response.json()) as {
+        quoteResponse?: {
+          result?: Array<{
+            symbol?: string;
+            regularMarketPrice?: number;
+            regularMarketTime?: number;
+          }>;
+        };
       };
-    };
 
-    const result = data.quoteResponse?.result ?? [];
-    const sp500 = result.find((entry) => entry.symbol === "^GSPC");
-    const bitcoin = result.find((entry) => entry.symbol === "BTC-USD");
-    const latestEpoch = Math.max(
-      sp500?.regularMarketTime ?? 0,
-      bitcoin?.regularMarketTime ?? 0,
-    );
+      const result = data.quoteResponse?.result ?? [];
+      const sp500 = result.find((entry) => entry.symbol === "^GSPC");
+      const bitcoin = result.find((entry) => entry.symbol === "BTC-USD");
+      const latestEpoch = Math.max(
+        sp500?.regularMarketTime ?? 0,
+        bitcoin?.regularMarketTime ?? 0,
+      );
 
-    return {
-      sp500: sp500?.regularMarketPrice ?? null,
-      bitcoin: bitcoin?.regularMarketPrice ?? null,
-      updatedAt:
-        latestEpoch > 0
-          ? new Date(latestEpoch * 1000).toLocaleString("en-US", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })
-          : null,
-    };
+      if (
+        (sp500?.regularMarketPrice ?? null) !== null &&
+        (bitcoin?.regularMarketPrice ?? null) !== null
+      ) {
+        return {
+          sp500: sp500?.regularMarketPrice ?? null,
+          bitcoin: bitcoin?.regularMarketPrice ?? null,
+          updatedAt:
+            latestEpoch > 0
+              ? new Date(latestEpoch * 1000).toLocaleString("en-US", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })
+              : null,
+        };
+      }
+    }
   } catch {
-    return fallback;
+    // fallback below
   }
+
+  try {
+    const [spRes, btcRes] = await Promise.all([
+      fetch(STOOQ_SP500_URL, { next: { revalidate: 900 } }),
+      fetch(COINGECKO_BTC_URL, { next: { revalidate: 300 } }),
+    ]);
+    const spText = spRes.ok ? await spRes.text() : "";
+    const btcData = btcRes.ok
+      ? ((await btcRes.json()) as { bitcoin?: { usd?: number } })
+      : {};
+
+    const rows = spText.trim().split("\n");
+    const latest = rows.length > 1 ? rows[1].split(",") : [];
+    const sp500 = latest.length >= 7 ? Number(latest[6]) : null;
+    const bitcoin = btcData.bitcoin?.usd ?? null;
+    const hasValues =
+      sp500 !== null && !Number.isNaN(sp500) && bitcoin !== null && !Number.isNaN(bitcoin);
+
+    if (hasValues) {
+      return {
+        sp500,
+        bitcoin,
+        updatedAt: new Date().toLocaleString("en-US", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }),
+      };
+    }
+  } catch {
+    // final fallback below
+  }
+
+  return fallback;
 }
 
 export default async function Home() {
@@ -326,7 +437,7 @@ export default async function Home() {
     });
     if (response.ok) {
       const xml = await response.text();
-      items = parseNews(xml).slice(0, 20);
+      items = curateNewsItems(parseNews(xml)).slice(0, 28);
     }
   } catch {
     items = [];
@@ -504,7 +615,7 @@ export default async function Home() {
               </div>
 
               <p className="mt-4 text-[11px] text-slate-500">
-                Source: Yahoo Finance quote API
+                Source: Yahoo Finance (fallback: Stooq + CoinGecko)
               </p>
               <p className="mt-1 text-[11px] text-slate-500">
                 Last market update: {market.updatedAt ?? "Unavailable"}
