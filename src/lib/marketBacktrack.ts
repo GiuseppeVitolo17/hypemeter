@@ -54,13 +54,13 @@ async function fetchYahooYearlyCloses(symbol: string): Promise<YearlyCloseMap> {
 
 /**
  * Pre-first datapoint = first known close (flat line), then forward-fill.
- * Returns `null` when Yahoo returned no usable closes — do not draw a fake flat line
- * (constant series normalizes to 0 and stacks three identical “bottom” lines).
+ * If Yahoo returns nothing, we still emit a flat placeholder so the chart always draws
+ * three colored overlays (they sit near mid-chart, not collapsed at 0).
  */
-export function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] | null {
+export function alignYearSeries(years: number[], yearly: YearlyCloseMap): number[] {
   const raw = years.map((y) => yearly.get(y) ?? null);
   const firstIdx = raw.findIndex((v) => v != null);
-  if (firstIdx === -1) return null;
+  if (firstIdx === -1) return years.map(() => 50);
   const firstVal = raw[firstIdx]!;
   let last = firstVal;
   return raw.map((v, i) => {
@@ -69,12 +69,24 @@ export function alignYearSeries(years: number[], yearly: YearlyCloseMap): number
   });
 }
 
-/** Min–max normalize to 0–100. Empty when inputs are degenerate (no variance). */
-export function normalizeTo100(values: number[]): number[] {
+export type NormalizeTo100Options = {
+  /**
+   * When min === max, nudge the flat line slightly so S&P / BTC / NTDOY don’t paint as one stroke.
+   * Typical: 0, ~0.5, ~-0.5 on the 0–100 scale.
+   */
+  degenerateBias?: number;
+};
+
+/** Min–max normalize to 0–100. Constant series → mid-chart (~50), not 0 (bottom). */
+export function normalizeTo100(values: number[], options?: NormalizeTo100Options): number[] {
   if (values.length === 0) return [];
   const min = Math.min(...values);
   const max = Math.max(...values);
-  if (max === min) return [];
+  const bias = options?.degenerateBias ?? 0;
+  if (max === min) {
+    const mid = Math.min(100, Math.max(0, 50 + bias));
+    return values.map(() => mid);
+  }
   return values.map((v) => ((v - min) / (max - min)) * 100);
 }
 
@@ -91,8 +103,9 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   const spAligned = alignYearSeries(years, spMap);
   const btcAligned = alignYearSeries(years, btcMap);
   const ntAligned = alignYearSeries(years, ntMap);
-  const sp500 = spAligned === null ? [] : normalizeTo100(spAligned);
-  const btc = btcAligned === null ? [] : normalizeTo100(btcAligned);
-  const nintendo = ntAligned === null ? [] : normalizeTo100(ntAligned);
-  return { sp500, btc, nintendo };
+  return {
+    sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),
+    btc: normalizeTo100(btcAligned, { degenerateBias: 0.55 }),
+    nintendo: normalizeTo100(ntAligned, { degenerateBias: -0.55 }),
+  };
 }

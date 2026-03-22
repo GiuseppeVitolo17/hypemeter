@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { alignYearSeries, normalizeTo100 } from "@/lib/marketBacktrack";
 
 describe("marketBacktrack", () => {
-  it("alignYearSeries returns null when no Yahoo data (avoid fake flat → normalize collapse)", () => {
+  it("alignYearSeries uses placeholder when no Yahoo data (still drawable overlays)", () => {
     const years = [2020, 2021, 2022];
     const empty = new Map<number, number>();
-    expect(alignYearSeries(years, empty)).toBeNull();
+    expect(alignYearSeries(years, empty)).toEqual([50, 50, 50]);
   });
 
   it("alignYearSeries forward-fills from first known close", () => {
@@ -18,8 +18,9 @@ describe("marketBacktrack", () => {
     expect(alignYearSeries(years, m)).toEqual([100, 110, 120]);
   });
 
-  it("normalizeTo100 returns empty when there is no variance", () => {
-    expect(normalizeTo100([5, 5, 5])).toEqual([]);
+  it("normalizeTo100 maps constant series to mid-chart (50), with optional bias", () => {
+    expect(normalizeTo100([5, 5, 5])).toEqual([50, 50, 50]);
+    expect(normalizeTo100([5, 5, 5], { degenerateBias: 0.5 })).toEqual([50.5, 50.5, 50.5]);
   });
 
   it("normalizeTo100 maps min→0 and max→100", () => {
