@@ -1441,23 +1441,6 @@ export default async function Home() {
   const topArticles = [...items]
     .sort((a, b) => scoreArticleRelevance(b) - scoreArticleRelevance(a))
     .slice(0, 10);
-  const sourceCounts = items.reduce(
-    (acc, item) => {
-      const source = normalize(item.source);
-      if (source.includes("reddit")) acc.reddit += 1;
-      if (source.includes("youtube")) acc.youtube += 1;
-      if (source.includes("facebook")) acc.facebook += 1;
-      if (
-        source.includes("pokemon.com") ||
-        source.includes("the pokemon company") ||
-        source.includes("nintendo")
-      ) {
-        acc.official += 1;
-      }
-      return acc;
-    },
-    { reddit: 0, youtube: 0, facebook: 0, official: 0 },
-  );
   const now = new Date();
   const todayIso = now.toISOString().slice(0, 10);
   const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -1497,50 +1480,60 @@ export default async function Home() {
     facebook: 0,
     official: 0,
   };
-  const pctDelta = (current: number, previous: number) => {
-    if (current <= 0 && previous <= 0) return 0;
-    if (previous <= 0) return 100;
-    return ((current - previous) / previous) * 100;
-  };
-  const platformGraph = [
+  const platformGraphBase = [
     {
       key: "google-search",
       label: "Google Search",
-      value: searchInterest,
-      deltaPct: pctDelta(todayCounts.all, yesterdayCounts.all),
+      current: todayCounts.all,
+      previous: yesterdayCounts.all,
       accent: "from-cyan-400 to-blue-500",
     },
     {
       key: "reddit",
       label: "Reddit",
-      value: clampScore((sourceCounts.reddit / Math.max(1, items.length)) * 100 * 1.7),
-      deltaPct: pctDelta(todayCounts.reddit, yesterdayCounts.reddit),
+      current: todayCounts.reddit,
+      previous: yesterdayCounts.reddit,
       accent: "from-orange-400 to-amber-500",
     },
     {
       key: "youtube",
       label: "YouTube",
-      value: clampScore((sourceCounts.youtube / Math.max(1, items.length)) * 100 * 2),
-      deltaPct: pctDelta(todayCounts.youtube, yesterdayCounts.youtube),
+      current: todayCounts.youtube,
+      previous: yesterdayCounts.youtube,
       accent: "from-red-400 to-rose-500",
     },
     {
       key: "facebook",
       label: "Facebook",
-      value: clampScore((sourceCounts.facebook / Math.max(1, items.length)) * 100 * 1.7),
-      deltaPct: pctDelta(todayCounts.facebook, yesterdayCounts.facebook),
+      current: todayCounts.facebook,
+      previous: yesterdayCounts.facebook,
       accent: "from-indigo-400 to-blue-500",
     },
     {
       key: "pokemon-official",
       label: "Pokemon Official",
-      value: clampScore(
-        (sourceCounts.official / Math.max(1, items.length)) * 100 * 1.8 + eventCatalyst * 0.2,
-      ),
-      deltaPct: pctDelta(todayCounts.official, yesterdayCounts.official),
+      current: todayCounts.official,
+      previous: yesterdayCounts.official,
       accent: "from-fuchsia-400 to-purple-500",
     },
   ];
+  const maxPlatformCurrent = Math.max(
+    1,
+    ...platformGraphBase.map((platform) => platform.current),
+    Math.round(searchInterest / 10),
+  );
+  const platformGraph = platformGraphBase.map((platform) => {
+    const rawCurrent =
+      platform.key === "google-search"
+        ? Math.max(platform.current, Math.round(searchInterest / 10))
+        : platform.current;
+    return {
+      ...platform,
+      current: rawCurrent,
+      deltaAbs: rawCurrent - platform.previous,
+      barPct: clampScore((rawCurrent / maxPlatformCurrent) * 100),
+    };
+  });
   const pokemonCatalog = await fetchPokemonNameCatalog();
   const pokemonOfDayArticle = pickArticleOfDay(items, pokemonCatalog);
   const pokemonOfDay = await pickPokemonOfDayFromArticle(pokemonOfDayArticle, pokemonCatalog);
@@ -1796,20 +1789,20 @@ export default async function Home() {
                       <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
                         {platform.label}
                       </p>
-                      <p className="text-sm font-bold text-white">{platform.value}</p>
+                      <p className="text-sm font-bold text-white">{platform.current}</p>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-700">
                       <div
                         className={`h-full rounded-full bg-gradient-to-r ${platform.accent}`}
-                        style={{ width: `${platform.value}%` }}
+                        style={{ width: `${platform.barPct}%` }}
                       />
                     </div>
                     <p
                       className={`mt-1 text-[10px] ${
-                        platform.deltaPct >= 0 ? "text-emerald-300" : "text-rose-300"
+                        platform.deltaAbs >= 0 ? "text-emerald-300" : "text-rose-300"
                       }`}
                     >
-                      {platform.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaPct).toFixed(0)}% vs day before
+                      {platform.deltaAbs >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaAbs)} vs day before
                     </p>
                   </article>
                 ))}
