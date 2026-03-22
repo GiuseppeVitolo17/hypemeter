@@ -449,32 +449,57 @@ function parseApproxTraffic(raw: string) {
   return value * (multipliers[unit] ?? 1);
 }
 
+type SearchInterestStats = {
+  score: number;
+  todayTraffic: number;
+  yesterdayTraffic: number;
+};
+
 // Derive demand proxy from daily Google Trends RSS.
-async function fetchSearchInterestScore(items: NewsItem[] = []) {
+async function fetchSearchInterestStats(items: NewsItem[] = []): Promise<SearchInterestStats> {
   const fallbackFromNews = () => {
     if (items.length === 0) return 35;
     const recent24 = items.filter((item) => hoursAgo(item.pubDate) <= 24).length;
     // Strong non-zero floor when Pokemon headlines are clearly active.
     return clampScore(24 + Math.min(34, items.length * 1.25) + Math.min(18, recent24 * 1.9));
   };
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const yesterdayIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   try {
     const response = await fetch(GOOGLE_TRENDS_DAILY_RSS, { next: { revalidate: 900 } });
-    if (!response.ok) return fallbackFromNews();
+    if (!response.ok) {
+      return {
+        score: fallbackFromNews(),
+        todayTraffic: 0,
+        yesterdayTraffic: 0,
+      };
+    }
     const xml = await response.text();
     const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
     const keywordRegex =
       /(pokemon cards|pokemon tcg|pokemon center preorder|pokemon center|pokemon|pokémon|pokemon go|pokemon presents|pokemon direct)/i;
     let totalTraffic = 0;
+    let todayTraffic = 0;
+    let yesterdayTraffic = 0;
     let pokemonTrendHits = 0;
     let match = itemRegex.exec(xml);
     while (match) {
       const item = match[1];
       const title = readTag(item, "title");
       const trafficRaw = readTag(item, "ht:approx_traffic");
+      const pubDateRaw = readTag(item, "pubDate");
       if (keywordRegex.test(title)) {
         pokemonTrendHits += 1;
-        totalTraffic += parseApproxTraffic(trafficRaw);
+        const traffic = parseApproxTraffic(trafficRaw);
+        totalTraffic += traffic;
+        const pubTs = new Date(pubDateRaw).getTime();
+        if (!Number.isNaN(pubTs)) {
+          const iso = new Date(pubTs).toISOString().slice(0, 10);
+          if (iso === todayIso) todayTraffic += traffic;
+          if (iso === yesterdayIso) yesterdayTraffic += traffic;
+        }
       }
       match = itemRegex.exec(xml);
     }
@@ -482,13 +507,21 @@ async function fetchSearchInterestScore(items: NewsItem[] = []) {
     const trendScore = clampScore((Math.log10(totalTraffic + 1) / 6) * 100 + pokemonTrendHits * 6);
     const fallback = fallbackFromNews();
     if (pokemonTrendHits === 0 || trendScore <= 0) {
-      return fallback;
+      return { score: fallback, todayTraffic, yesterdayTraffic };
     }
 
     // Blend trend RSS with live Pokemon news activity, keeping search signal meaningful.
-    return clampScore(Math.max(trendScore, fallback * 0.74 + trendScore * 0.26));
+    return {
+      score: clampScore(Math.max(trendScore, fallback * 0.74 + trendScore * 0.26)),
+      todayTraffic,
+      yesterdayTraffic,
+    };
   } catch {
-    return fallbackFromNews();
+    return {
+      score: fallbackFromNews(),
+      todayTraffic: 0,
+      yesterdayTraffic: 0,
+    };
   }
 }
 
@@ -1001,6 +1034,10 @@ function formatGrowthPct(value: number | null) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
+function formatInteger(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value));
+}
+
 function titleCase(value: string) {
   return value
     .split("-")
@@ -1459,6 +1496,7 @@ async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
 export default async function Home() {
   // Defensive defaults keep the page renderable even on upstream failures.
   let items: NewsItem[] = [];
+  let searchStats: SearchInterestStats = { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
   let searchInterest = 35;
   let marketMomentum = 50;
   let eventCatalyst = 40;
@@ -1481,12 +1519,13 @@ export default async function Home() {
   const market = await fetchMarketSnapshot();
 
   // Pull independent external signals in parallel to minimize latency.
-  [searchInterest, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
-    fetchSearchInterestScore(items),
+  [searchStats, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
+    fetchSearchInterestStats(items),
     fetchMarketMomentumScore(market),
     fetchEventCatalystScore(),
     fetchCommunitySentimentScore(),
   ]);
+  searchInterest = searchStats.score;
 
   const { score, indicators, communityScore, marketScore } = summarizeHype(items, {
     searchInterest,
@@ -1554,12 +1593,17 @@ export default async function Home() {
     facebook: 0,
     official: 0,
   };
+  const pctDelta = (current: number, previous: number) => {
+    if (current <= 0 && previous <= 0) return 0;
+    if (previous <= 0) return 100;
+    return ((current - previous) / previous) * 100;
+  };
   const platformGraphBase = [
     {
       key: "google-search",
       label: "Google Search",
-      current: todayCounts.all,
-      previous: yesterdayCounts.all,
+      current: searchStats.todayTraffic,
+      previous: searchStats.yesterdayTraffic,
       accent: "from-cyan-400 to-blue-500",
     },
     {
@@ -1593,19 +1637,13 @@ export default async function Home() {
   ];
   const maxPlatformCurrent = Math.max(
     1,
-    ...platformGraphBase.map((platform) => platform.current),
-    Math.round(searchInterest / 10),
+    ...platformGraphBase.map((platform) => Math.log10(platform.current + 1)),
   );
   const platformGraph = platformGraphBase.map((platform) => {
-    const rawCurrent =
-      platform.key === "google-search"
-        ? Math.max(platform.current, Math.round(searchInterest / 10))
-        : platform.current;
     return {
       ...platform,
-      current: rawCurrent,
-      deltaAbs: rawCurrent - platform.previous,
-      barPct: clampScore((rawCurrent / maxPlatformCurrent) * 100),
+      deltaPct: pctDelta(platform.current, platform.previous),
+      barPct: clampScore((Math.log10(platform.current + 1) / maxPlatformCurrent) * 100),
     };
   });
   const pokemonCatalog = await fetchPokemonNameCatalog();
@@ -1863,7 +1901,7 @@ export default async function Home() {
                       <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
                         {platform.label}
                       </p>
-                      <p className="text-sm font-bold text-white">{platform.current}</p>
+                      <p className="text-sm font-bold text-white">{formatInteger(platform.current)}</p>
                     </div>
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-700">
                       <div
@@ -1873,10 +1911,10 @@ export default async function Home() {
                     </div>
                     <p
                       className={`mt-1 text-[10px] ${
-                        platform.deltaAbs >= 0 ? "text-emerald-300" : "text-rose-300"
+                        platform.deltaPct >= 0 ? "text-emerald-300" : "text-rose-300"
                       }`}
                     >
-                      {platform.deltaAbs >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaAbs)} vs day before
+                      {platform.deltaPct >= 0 ? "▲" : "▼"} {Math.abs(platform.deltaPct).toFixed(0)}% vs day before
                     </p>
                   </article>
                 ))}

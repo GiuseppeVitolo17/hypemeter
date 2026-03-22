@@ -209,18 +209,20 @@ export default function HypeBacktrackingChart({ history, events = [] }: Props) {
       <p className="mt-2 text-[11px] text-slate-500">
         Hover across the chart to inspect each year.
       </p>
-      {activeEvents.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {activeEvents.map((event) => (
-            <span
-              key={`${event.year}-${event.label}`}
-              className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
-            >
-              {event.label}
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <div className="mt-2 min-h-[24px]">
+        {activeEvents.length > 0 ? (
+          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap pb-1">
+            {activeEvents.map((event) => (
+              <span
+                key={`${event.year}-${event.label}`}
+                className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
+              >
+                {event.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
