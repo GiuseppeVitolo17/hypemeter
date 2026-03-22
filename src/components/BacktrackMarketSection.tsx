@@ -25,9 +25,20 @@ type Props = {
   events: YearEventSignal[];
   marketOverlay: MarketYearlyOverlay;
   market: MarketSnap;
+  /** First 7 chars of VERCEL_GIT_COMMIT_SHA — confirms which build is live. */
+  deploymentSha?: string | null;
+  /** Matches `export const revalidate` on the homepage (seconds). */
+  pageRevalidateSeconds?: number;
 };
 
-export default function BacktrackMarketSection({ history, events, marketOverlay, market }: Props) {
+export default function BacktrackMarketSection({
+  history,
+  events,
+  marketOverlay,
+  market,
+  deploymentSha,
+  pageRevalidateSeconds = 300,
+}: Props) {
   const [highlight, setHighlight] = useState<MarketHighlightKey | null>(null);
 
   return (
@@ -154,6 +165,9 @@ export default function BacktrackMarketSection({ history, events, marketOverlay,
           </p>
           <p className="mt-1 text-[11px] text-slate-500">
             Last market update: {market.updatedAt ?? "Unavailable"}
+          </p>
+          <p className="mt-1 font-mono text-[10px] text-slate-600">
+            Build {deploymentSha ?? "local"} · page cache ~{Math.round(pageRevalidateSeconds / 60)}m
           </p>
         </aside>
       </div>

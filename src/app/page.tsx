@@ -90,8 +90,8 @@ type CardTraderBestSeller = {
   fromPrice: string;
 };
 
-// Revalidate the server-rendered homepage every 30 minutes.
-export const revalidate = 1800;
+// Revalidate the server-rendered homepage (ISR). Shorter window so deploys show up sooner on Vercel.
+export const revalidate = 300;
 
 // Curated Google News query tuned for Pokemon relevance and noise reduction.
 const NEWS_QUERY = encodeURIComponent(
@@ -2310,6 +2310,8 @@ export default async function Home() {
             events={timelineEventSignals}
             marketOverlay={marketOverlay}
             market={market}
+            deploymentSha={process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null}
+            pageRevalidateSeconds={revalidate}
           />
         </ScrollReveal>
 
