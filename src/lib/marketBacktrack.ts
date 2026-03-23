@@ -19,9 +19,19 @@ export type MarketYearlyOverlay = {
   inflationYoY: number[];
   /** Same inflation series min–max normalized to 0–100 (thin line on chart). */
   inflation: number[];
+  /** Optional higher-resolution recent window (used by mobile chart). */
+  monthly?: {
+    labels: string[];
+    sp500: number[];
+    btc: number[];
+    nintendo: number[];
+    inflationYoY: number[];
+    inflation: number[];
+  };
 };
 
 type YearlyCloseMap = Map<number, number>;
+type MonthlyCloseMap = Map<string, number>;
 
 const STOOQ_HIST_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -60,6 +70,39 @@ export function parseStooqDailyHistoryToYearlyLastClose(csv: string): YearlyClos
     }
   }
   for (const [year, v] of lastByYear) map.set(year, v.close);
+  return map;
+}
+
+/** Last trading close per `YYYY-MM` from Stooq daily CSV (Date + Close). */
+export function parseStooqDailyHistoryToMonthlyLastClose(csv: string): MonthlyCloseMap {
+  const map: MonthlyCloseMap = new Map();
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return map;
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  let dateIdx = header.indexOf("date");
+  const closeIdx = header.indexOf("close");
+  if (closeIdx < 0) return map;
+  if (dateIdx < 0) dateIdx = 0;
+  const lastByMonth = new Map<string, { dateStr: string; close: number }>();
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",");
+    const dateStr = cols[dateIdx]?.trim();
+    const rawClose = cols[closeIdx]?.trim().replace(/^"|"$/g, "") ?? "";
+    const close = Number(rawClose);
+    if (!dateStr || Number.isNaN(close)) continue;
+    const d = new Date(`${dateStr}T12:00:00Z`);
+    if (Number.isNaN(d.getTime())) continue;
+    const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const prev = lastByMonth.get(key);
+    if (!prev || dateStr > prev.dateStr) {
+      lastByMonth.set(key, { dateStr, close });
+    }
+  }
+  for (const [k, v] of lastByMonth) map.set(k, v.close);
   return map;
 }
 
@@ -348,6 +391,52 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
   }
 }
 
+async function fetchStooqMonthlyClosesBySymbol(
+  stooqSymbol: string,
+  windowMonths = 30,
+): Promise<MonthlyCloseMap> {
+  try {
+    const d2 = new Date();
+    const d1 = new Date(d2);
+    d1.setUTCMonth(d1.getUTCMonth() - windowMonths);
+    const fmt = (d: Date) =>
+      `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+    const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSymbol)}&d1=${fmt(d1)}&d2=${fmt(d2)}&i=d`;
+    const res = await fetch(url, {
+      next: { revalidate: 86400 },
+      headers: { "user-agent": STOOQ_HIST_UA },
+      signal: AbortSignal.timeout(HIST_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return new Map();
+    return parseStooqDailyHistoryToMonthlyLastClose(await res.text());
+  } catch {
+    return new Map();
+  }
+}
+
+function buildRecentMonthLabels(count: number, now = new Date()): string[] {
+  const out: string[] = [];
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0-based
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+function alignMonthSeries(labels: string[], monthly: MonthlyCloseMap): number[] {
+  const raw = labels.map((k) => monthly.get(k) ?? null);
+  const firstIdx = raw.findIndex((v) => v != null);
+  if (firstIdx === -1) return labels.map(() => 50);
+  const firstVal = raw[firstIdx]!;
+  let last = firstVal;
+  return raw.map((v, i) => {
+    if (v != null) last = v;
+    return i < firstIdx ? firstVal : last;
+  });
+}
+
 /**
  * Pre-first datapoint = first known close (flat line), then forward-fill.
  * If Stooq returns nothing, we still emit a flat placeholder so the chart always draws
@@ -397,14 +486,18 @@ export function normalizeTo100(values: number[], options?: NormalizeTo100Options
 /** Parallel fetch + per-asset normalization (same Y scale as hype 0–100). */
 export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketYearlyOverlay> {
   if (years.length === 0) {
-    return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [] };
+    return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [], monthly: undefined };
   }
-  const [spS, btcS, ntUs, ntPlain, cpiYoYMap] = await Promise.all([
+  const [spS, btcS, ntUs, ntPlain, cpiYoYMap, spM, btcM, ntUsM, ntPlainM] = await Promise.all([
     timedAsync("overlay:stooq^spx", () => fetchStooqYearlyClosesBySymbol("^spx")),
     timedAsync("overlay:stooqbtcusd", () => fetchStooqYearlyClosesBySymbol("btcusd")),
     timedAsync("overlay:stooqNtdyUs", () => fetchStooqYearlyClosesBySymbol("ntdoy.us")),
     timedAsync("overlay:stooqNtdy", () => fetchStooqYearlyClosesBySymbol("ntdoy")),
     timedAsync("overlay:cpiYoY(fred+wb+csv)", () => fetchFredCpiYoYByYear(years)),
+    timedAsync("overlay:monthly:spx", () => fetchStooqMonthlyClosesBySymbol("^spx")),
+    timedAsync("overlay:monthly:btc", () => fetchStooqMonthlyClosesBySymbol("btcusd")),
+    timedAsync("overlay:monthly:ntUs", () => fetchStooqMonthlyClosesBySymbol("ntdoy.us")),
+    timedAsync("overlay:monthly:nt", () => fetchStooqMonthlyClosesBySymbol("ntdoy")),
   ]);
   const spMap = spS;
   const btcMap = btcS;
@@ -420,11 +513,27 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     ntAligned = alignYearSeries(years, stooqTokyo);
   }
   const inflationYoY = alignYearSeries(years, cpiYoYMap);
+  const monthLabels = buildRecentMonthLabels(24);
+  const ntMonthly = new Map<string, number>(ntPlainM);
+  for (const [k, v] of ntUsM) ntMonthly.set(k, v);
+  const monthlyInflationYoY = monthLabels.map((label) => {
+    const y = Number(label.slice(0, 4));
+    const v = cpiYoYMap.get(y);
+    return v ?? 0;
+  });
   return {
     sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),
     btc: normalizeTo100(btcAligned, { degenerateBias: 0.55 }),
     nintendo: normalizeTo100(ntAligned, { degenerateBias: -0.55 }),
     inflationYoY,
     inflation: normalizeTo100(inflationYoY, { degenerateBias: 0.25 }),
+    monthly: {
+      labels: monthLabels,
+      sp500: normalizeTo100(alignMonthSeries(monthLabels, spM), { degenerateBias: 0 }),
+      btc: normalizeTo100(alignMonthSeries(monthLabels, btcM), { degenerateBias: 0.55 }),
+      nintendo: normalizeTo100(alignMonthSeries(monthLabels, ntMonthly), { degenerateBias: -0.55 }),
+      inflationYoY: monthlyInflationYoY,
+      inflation: normalizeTo100(monthlyInflationYoY, { degenerateBias: 0.25 }),
+    },
   };
 }

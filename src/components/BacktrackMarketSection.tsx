@@ -66,7 +66,11 @@ function expandToMonthlyWindow(
   const idxByYear = new Map(history.map((h, i) => [h.year, i]));
   const scoreByYear = new Map(history.map((h) => [h.year, h.score]));
 
-  const buildMonthlySeries = (yearlyValues: number[]): number[] => {
+  const buildMonthlySeries = (yearlyValues: number[], labels?: string[]): number[] => {
+    if (labels && labels.length > 0) {
+      // For market overlays prefer server-side historical monthly sampling.
+      return yearlyValues.slice(0, labels.length);
+    }
     const out: number[] = [];
     for (let y = startYear; y <= lastYear; y += 1) {
       const idx = idxByYear.get(y);
@@ -82,30 +86,46 @@ function expandToMonthlyWindow(
     return out;
   };
 
-  const monthlyHistory: ChartPoint[] = [];
-  for (let y = startYear; y <= lastYear; y += 1) {
-    const curr = scoreByYear.get(y);
-    if (curr === undefined) continue;
-    const prev = scoreByYear.get(y - 1) ?? curr;
-    for (let m = 1; m <= 12; m += 1) {
-      const t = m / 12;
-      const score = Math.round(prev + (curr - prev) * t);
-      monthlyHistory.push({
-        year: y,
-        month: m,
-        score,
-        periodLabel: monthLabel(y, m),
-        key: `${y}-${String(m).padStart(2, "0")}`,
-      });
-    }
-  }
+  const monthlyLabels = marketOverlay.monthly?.labels ?? [];
+  const monthlyHistory: ChartPoint[] =
+    monthlyLabels.length > 0
+      ? monthlyLabels.map((label) => {
+          const y = Number(label.slice(0, 4));
+          const m = Number(label.slice(5, 7));
+          const curr = scoreByYear.get(y) ?? 50;
+          const prev = scoreByYear.get(y - 1) ?? curr;
+          const t = m / 12;
+          const score = Math.round(prev + (curr - prev) * t);
+          return { year: y, month: m, score, periodLabel: label, key: label };
+        })
+      : (() => {
+          const out: ChartPoint[] = [];
+          for (let y = startYear; y <= lastYear; y += 1) {
+            const curr = scoreByYear.get(y);
+            if (curr === undefined) continue;
+            const prev = scoreByYear.get(y - 1) ?? curr;
+            for (let m = 1; m <= 12; m += 1) {
+              const t = m / 12;
+              const score = Math.round(prev + (curr - prev) * t);
+              out.push({
+                year: y,
+                month: m,
+                score,
+                periodLabel: monthLabel(y, m),
+                key: `${y}-${String(m).padStart(2, "0")}`,
+              });
+            }
+          }
+          return out;
+        })();
 
   const monthlyOverlay: MarketYearlyOverlay = {
-    sp500: buildMonthlySeries(marketOverlay.sp500),
-    btc: buildMonthlySeries(marketOverlay.btc),
-    nintendo: buildMonthlySeries(marketOverlay.nintendo),
-    inflationYoY: buildMonthlySeries(marketOverlay.inflationYoY),
-    inflation: buildMonthlySeries(marketOverlay.inflation),
+    sp500: marketOverlay.monthly?.sp500 ?? buildMonthlySeries(marketOverlay.sp500),
+    btc: marketOverlay.monthly?.btc ?? buildMonthlySeries(marketOverlay.btc),
+    nintendo: marketOverlay.monthly?.nintendo ?? buildMonthlySeries(marketOverlay.nintendo),
+    inflationYoY: marketOverlay.monthly?.inflationYoY ?? buildMonthlySeries(marketOverlay.inflationYoY),
+    inflation: marketOverlay.monthly?.inflation ?? buildMonthlySeries(marketOverlay.inflation),
+    monthly: undefined,
   };
 
   const visibleYears = new Set<number>();
