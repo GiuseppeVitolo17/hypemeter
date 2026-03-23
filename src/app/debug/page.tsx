@@ -15,6 +15,23 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+type StatusTone = "ok" | "warn";
+
+function statusBadge(ok: boolean, okLabel = "WORKING", badLabel = "ISSUE") {
+  const tone: StatusTone = ok ? "ok" : "warn";
+  const cls =
+    tone === "ok"
+      ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
+      : "border-amber-400/40 bg-amber-500/15 text-amber-200";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${cls}`}
+    >
+      {ok ? okLabel : badLabel}
+    </span>
+  );
+}
+
 function isDebugTimingEnabled(): boolean {
   if (process.env.NODE_ENV === "development") return true;
   return process.env.ENABLE_DEBUG_TIMING_PAGE === "1";
@@ -33,6 +50,48 @@ export default async function DebugPage() {
     getCardTraderJinaDebugPayload(),
   ]);
   const ref = deployLabel();
+  const homeSample = await loadHomePageDataUncached();
+
+  const checks = [
+    {
+      label: "Home data pipeline",
+      ok: homeSample.score >= 0 && homeSample.score <= 100,
+      detail: `${homeSample.items.length} headlines, score ${homeSample.score}/100`,
+    },
+    {
+      label: "Card highlight parser",
+      ok:
+        Boolean(cardHighlightPayload.seller?.cardUrl) &&
+        Boolean(cardHighlightPayload.seller?.imageUrl),
+      detail: cardHighlightPayload.seller?.name || "no parsed seller",
+    },
+    {
+      label: "Card highlight upstream image",
+      ok: cardHighlightPayload.upstream.ok && cardHighlightPayload.upstream.bytes > 0,
+      detail: cardHighlightPayload.upstream.ok
+        ? `${cardHighlightPayload.upstream.bytes} bytes · ${cardHighlightPayload.upstream.contentType}`
+        : cardHighlightPayload.upstream.error,
+    },
+    {
+      label: "CardTrader Jina fetch",
+      ok: cardTraderPayload.jinaOk,
+      detail: `HTTP ${cardTraderPayload.jinaStatus} · text ${cardTraderPayload.textLength}`,
+    },
+    {
+      label: "CardTrader parsed payload",
+      ok: Boolean(cardTraderPayload.parsed?.cardUrl),
+      detail: cardTraderPayload.parsed?.name ?? "no parsed card",
+    },
+    {
+      label: "Pokemon highlight click target",
+      ok: Boolean(homeSample.pokemonOfDayArticle?.link) || Boolean(homeSample.pokemonOfDay),
+      detail: homeSample.pokemonOfDayArticle?.link
+        ? "news spotlight article"
+        : homeSample.pokemonOfDay
+          ? "fallback pokedex link"
+          : "no pokemon resolved",
+    },
+  ] as const;
 
   let timingBlock: ReactNode = null;
   if (isDebugTimingEnabled()) {
@@ -114,6 +173,24 @@ export default async function DebugPage() {
             collegato.
           </span>
         </p>
+
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-cyan-200">System status</h2>
+          <div className="mt-3 grid gap-2 rounded-xl border border-white/10 bg-slate-900/60 p-3">
+            {checks.map((row) => (
+              <div
+                key={row.label}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-200">{row.label}</p>
+                  <p className="text-xs text-slate-400">{row.detail}</p>
+                </div>
+                {statusBadge(row.ok)}
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="mt-8">
           <h2 className="text-lg font-semibold text-amber-200/95">Card highlight image</h2>
