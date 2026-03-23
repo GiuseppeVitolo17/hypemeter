@@ -102,6 +102,10 @@ const NEWS_QUERY = encodeURIComponent(
   '("Pokemon" OR "Pokémon" OR "Pokemon GO" OR Nintendo) (game OR update OR event OR trailer OR release) -site:hotelier.com.py -site:propertyroom.com',
 );
 const NEWS_URL = `https://news.google.com/rss/search?q=${NEWS_QUERY}&hl=en-US&gl=US&ceid=US:en`;
+const NEWS_QUERY_BACKUP = encodeURIComponent(
+  '("Pokemon" OR "Pokémon" OR "Pokemon TCG" OR "Pokemon GO") (news OR update OR event OR release)',
+);
+const NEWS_URL_BACKUP = `https://news.google.com/rss/search?q=${NEWS_QUERY_BACKUP}&hl=en-US&gl=US&ceid=US:en`;
 const GOOGLE_TRENDS_DAILY_RSS = "https://trends.google.com/trending/rss?geo=US";
 const POKEMON_NEWS_URL = "https://www.pokemon.com/us/pokemon-news";
 const REDDIT_TCG_URL = "https://www.reddit.com/r/PokemonTCG/hot.json?limit=30";
@@ -1855,16 +1859,27 @@ async function loadHomePageDataUncached() {
   let communitySentiment = 50;
   try {
     await timedAsync("home:googleNewsRss", async () => {
-      const response = await fetchWithTimeout(NEWS_URL, {
-        next: { revalidate: 300 },
-        headers: {
-          "user-agent": "Mozilla/5.0 hypemeter",
-        },
-        timeoutMs: 10_000,
-      });
-      if (!response?.ok) throw new Error("news fetch failed");
-      const xml = await response.text();
-      items = curateNewsItems(parseNews(xml)).slice(0, 28);
+      const newsCandidates = [NEWS_URL, NEWS_URL_BACKUP];
+      for (const url of newsCandidates) {
+        const response = await fetchWithTimeout(url, {
+          next: { revalidate: 300 },
+          headers: {
+            "user-agent": "Mozilla/5.0 hypemeter",
+          },
+          timeoutMs: 10_000,
+        });
+        if (!response?.ok) continue;
+        const xml = await response.text();
+        const parsed = parseNews(xml);
+        const curated = curateNewsItems(parsed);
+        // Fallback to lightly-filtered parsed feed if strict curation returns empty.
+        const fallback = parsed.filter((item) => /(pokemon|pokémon)/i.test(item.title));
+        const selected = (curated.length > 0 ? curated : fallback).slice(0, 28);
+        if (selected.length > 0) {
+          items = selected;
+          break;
+        }
+      }
     });
   } catch {
     items = [];
