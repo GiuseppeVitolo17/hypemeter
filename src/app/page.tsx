@@ -349,7 +349,16 @@ function computeLiveSignalQuality(args: {
   socialTraffic: SocialTrafficSnapshot;
 }) {
   const { items, eventSignalCount, searchInterest, components, socialTraffic } = args;
-  if (items.length === 0) return 0;
+  if (items.length === 0) {
+    const socialPulse = computeSocialPulseStats(socialTraffic);
+    const searchHealth = clamp01(searchInterest / 100);
+    const fallback =
+      socialPulse.aggregateScore * 0.65 +
+      socialPulse.confidenceScore * 0.15 +
+      searchHealth * 100 * 0.2;
+    // During temporary feed outages avoid showing a misleading hard-zero quality.
+    return clampScore(Math.max(24, fallback));
+  }
   const sourceCounts = new Map<string, number>();
   for (const item of items) {
     const key = normalize(item.source || "Unknown");
@@ -1738,6 +1747,15 @@ function pickSpotlightArticleForPokemon(
   };
 }
 
+function pokemonPokedexUrl(name: string): string {
+  const slug = normalize(name)
+    .replace(/[^a-z0-9 -]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug ? `https://www.pokemon.com/us/pokedex/${slug}` : "https://www.pokemon.com/us/pokedex/";
+}
+
 async function resolvePokemonOfDay(
   items: NewsItem[],
   catalog: string[],
@@ -2073,6 +2091,13 @@ export default async function Home() {
     updatedAt,
     structuredData,
   } = await loadHomePageData();
+  const pokemonHighlightHref =
+    pokemonOfDayArticle?.link ?? (pokemonOfDay ? pokemonPokedexUrl(pokemonOfDay.name) : "#");
+  const pokemonHighlightTitle = pokemonOfDayArticle
+    ? `Open spotlight article from ${pokemonOfDayArticle.source}`
+    : pokemonOfDay
+      ? `Open ${pokemonOfDay.name} on Pokemon Pokedex`
+      : "Pokemon highlight";
 
   return (
     <main className="relative min-h-screen min-w-0 max-w-full overflow-x-clip bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
@@ -2140,17 +2165,11 @@ export default async function Home() {
               ) : null}
               {pokemonOfDay ? (
                 <a
-                  href={pokemonOfDayArticle?.link ?? "#"}
-                  target={pokemonOfDayArticle ? "_blank" : undefined}
-                  rel={pokemonOfDayArticle ? "noreferrer" : undefined}
-                  className={`flex h-full w-full max-w-full flex-col rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:w-56 ${
-                    pokemonOfDayArticle ? "hover:border-cyan-300/50" : "pointer-events-none"
-                  }`}
-                  title={
-                    pokemonOfDayArticle
-                      ? `Open spotlight article from ${pokemonOfDayArticle.source}`
-                      : "Pokemon highlight"
-                  }
+                  href={pokemonHighlightHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-full w-full max-w-full flex-col rounded-2xl border border-cyan-400/25 bg-slate-950/80 p-3 lg:w-56 hover:border-cyan-300/50"
+                  title={pokemonHighlightTitle}
                 >
                   <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
                     Pokemon Highlight
@@ -2447,7 +2466,7 @@ export default async function Home() {
           </h3>
           {items.length === 0 ? (
             <p className="mt-3 text-sm text-slate-400">
-              News feed temporarily unavailable. Deploy and refresh in a minute.
+              News feed temporarily unavailable. Fallback signals are active and auto-refresh will retry.
             </p>
           ) : (
             <ul className="mt-4 space-y-3">
