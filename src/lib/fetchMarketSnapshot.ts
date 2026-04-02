@@ -70,6 +70,35 @@ function buildStooq7974JpDailyUrl(): string {
   return buildStooqDailyUrl("7974.jp");
 }
 
+function buildStooqLineWithPrevUrl(symbol: string): string {
+  return `https://stooq.com/q/l/?s=${encodeURIComponent(symbol)}&i=d&f=sd2t2ohlcvp`;
+}
+
+function parseStooqLineWithPrev(csv: string): {
+  close: number | null;
+  previousClose: number | null;
+  growthPct: number | null;
+} {
+  const line = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find(Boolean);
+  if (!line) return { close: null, previousClose: null, growthPct: null };
+  const cols = line.split(",");
+  // Expected: symbol,date,time,open,high,low,close,volume,previousClose
+  const close = Number(cols[6]);
+  const previousClose = Number(cols[8]);
+  if (!Number.isFinite(close) || !(close > 0) || !Number.isFinite(previousClose) || !(previousClose > 0)) {
+    return { close: Number.isFinite(close) ? close : null, previousClose: null, growthPct: null };
+  }
+  return {
+    close,
+    previousClose,
+    growthPct: ((close - previousClose) / previousClose) * 100,
+  };
+}
+
 async function fetchStooqNtdyMetrics(): Promise<{ close: number | null; growthPct: number | null }> {
   for (const url of STOOQ_NTDY_URLS) {
     try {
@@ -90,6 +119,26 @@ async function fetchUsdJpyFromStooq(): Promise<number | null> {
     if (!res.ok) return null;
     const m = parseStooqMetrics(await res.text());
     return m.close;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchStooqLineWithPrev(symbol: string): Promise<{
+  close: number;
+  previousClose: number;
+  growthPct: number;
+} | null> {
+  try {
+    const res = await fetch(buildStooqLineWithPrevUrl(symbol), STOOQ_QUOTE_FETCH);
+    if (!res.ok) return null;
+    const parsed = parseStooqLineWithPrev(await res.text());
+    if (parsed.close === null || parsed.previousClose === null || parsed.growthPct === null) return null;
+    return {
+      close: parsed.close,
+      previousClose: parsed.previousClose,
+      growthPct: parsed.growthPct,
+    };
   } catch {
     return null;
   }
@@ -219,17 +268,28 @@ async function fetchNintendoTokyoUsdFromStooq7974(): Promise<{
   changeAbsJpy: number;
 } | null> {
   try {
-    const res = await fetch(buildStooq7974JpDailyUrl(), STOOQ_QUOTE_FETCH);
-    if (!res.ok) return null;
-    const two = parseStooqDailyDlLastTwoCloses(await res.text());
-    if (!two) return null;
+    // Prefer precise previous-close path from Stooq line API.
+    const precise = await fetchStooqLineWithPrev("7974.jp");
+    let lastJpy: number;
+    let prevJpy: number;
+    if (precise) {
+      lastJpy = precise.close;
+      prevJpy = precise.previousClose;
+    } else {
+      const res = await fetch(buildStooq7974JpDailyUrl(), STOOQ_QUOTE_FETCH);
+      if (!res.ok) return null;
+      const two = parseStooqDailyDlLastTwoCloses(await res.text());
+      if (!two) return null;
+      lastJpy = two.last;
+      prevJpy = two.prev;
+    }
     const rate = await fetchUsdJpyFromStooq();
     if (rate === null || !(rate > 0)) return null;
-    const price = jpyPairToUsdApprox(two.last, rate);
-    const previousClose = jpyPairToUsdApprox(two.prev, rate);
+    const price = jpyPairToUsdApprox(lastJpy, rate);
+    const previousClose = jpyPairToUsdApprox(prevJpy, rate);
     if (price === null || previousClose === null) return null;
-    const growthPct = ((two.last - two.prev) / two.prev) * 100;
-    return { price, previousClose, growthPct, changeAbsJpy: two.last - two.prev };
+    const growthPct = ((lastJpy - prevJpy) / prevJpy) * 100;
+    return { price, previousClose, growthPct, changeAbsJpy: lastJpy - prevJpy };
   } catch {
     return null;
   }
@@ -308,12 +368,20 @@ async function resolveSp500Metrics(spx: {
   sp500GrowthPct: number | null;
   sp500Source: Sp500QuoteSource | null;
 }> {
+  const preciseLine = await fetchStooqLineWithPrev("^spx");
   const stooqDaily = await fetchSp500StooqDailyLastTwo();
   let { sp500, sp500GrowthPct } = computeSp500Metrics(NULL_QUOTE, spx);
   let sp500Source: Sp500QuoteSource | null = spx.close !== null ? "stooq" : null;
 
+  // Prefer Stooq line with explicit previous close when available.
+  if (preciseLine) {
+    sp500 = preciseLine.close;
+    sp500GrowthPct = preciseLine.growthPct;
+    sp500Source = "stooq";
+  }
+
   // Prefer live line (`q/l`) only when consistent with daily close; else trust daily.
-  if (stooqDaily) {
+  if (stooqDaily && !preciseLine) {
     const livePrice = spx.close;
     const liveSane =
       livePrice !== null && (!stooqDaily.price || withinRelativeDiff(livePrice, stooqDaily.price, 0.08));

@@ -315,4 +315,51 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
     expect(snap.nintendoPreviousClose).toBe(14.44);
     expect(snap.nintendoSource).toBe("adr");
   });
+
+  it("uses Stooq precise line-with-previous-close for S&P500 when available", async () => {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+
+      if (url.includes("q/l/?s=%5Espx") && url.includes("f=sd2t2ohlcvp")) {
+        return textRes("^SPX,2026-04-02,17:21:07,6496.5,6600.4,6475,6570.3,561241743,6575.32");
+      }
+      if (url.includes("q/d/l") && url.includes("%5Espx")) {
+        return textRes("");
+      }
+      if (url.startsWith(STOOQ_SP500)) {
+        return textRes("Symbol,Date,Time,Open,High,Low,Close,Volume\n^SPX,2025-03-20,00:00:00,6400,6600,6300,6570,1");
+      }
+      if (url.includes("q/d/l") && url.includes("btcusd")) {
+        return textRes(`Date,Open,High,Low,Close,Volume
+2025-03-18,1,1,1,49000,1
+2025-03-19,1,1,1,50000,1`);
+      }
+      if (url.startsWith(STOOQ_BTC)) {
+        return textRes("BTCUSD,20260402,171032,49000,50000,48000,50000,,");
+      }
+      if (url.includes("q/d/l") && (url.includes("ntdoy.us") || url.includes("ntdoy"))) {
+        return textRes("");
+      }
+      if (url.includes("q/l/?s=ntdoy.us")) {
+        return textRes("");
+      }
+      if (url.includes("query1.finance.yahoo.com/v8/finance/chart/NTDOY")) {
+        return jsonRes({
+          chart: { result: [{ indicators: { quote: [{ close: [14.44, 14.22] }] } }] },
+        });
+      }
+      if (url.includes("q/d/l") && url.includes("7974.jp")) {
+        return textRes("");
+      }
+      if (url.includes("q/l/?s=usdjpy")) {
+        return textRes("");
+      }
+      throw new Error(`unexpected precise sp500 fetch: ${url}`);
+    }) as typeof fetch;
+
+    const snap = await fetchMarketSnapshot();
+    expect(snap.sp500).toBeCloseTo(6570.3, 6);
+    expect(snap.sp500GrowthPct).toBeCloseTo(((6570.3 - 6575.32) / 6575.32) * 100, 6);
+    expect(snap.sp500Source).toBe("stooq");
+  });
 });

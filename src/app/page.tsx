@@ -2,6 +2,7 @@ import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import { CardTraderHighlightImage } from "@/components/CardTraderHighlightImage";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
+import { HomeNextUpdateCountdown } from "@/components/HomeNextUpdateCountdown";
 import { HomeReloadButton } from "@/components/HomeReloadButton";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
@@ -2253,6 +2254,12 @@ export default async function Home() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <p className="text-xs text-slate-400">Updated (UTC): {updatedAt}</p>
                   <HomeReloadButton />
+                </div>
+                <div className="mt-1">
+                  <HomeNextUpdateCountdown
+                    computedAt={cacheMeta.computedAt}
+                    ttlSec={HOME_PAGE_DATA_CACHE_TTL_SEC}
+                  />
                 </div>
               </div>
               {cardTraderBestSeller ? (
