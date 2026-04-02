@@ -189,9 +189,7 @@ export default function BacktrackMarketSection({
     const year = history[history.length - 1]?.year ?? null;
     return { hasData: true as const, pct, year };
   }, [marketOverlay.inflationYoY, history]);
-  const nintendoPrimary = formatSignedChange(market.nintendoChangeAbs, market.nintendoChangeCurrency);
-  const nintendoDisplayPrimary =
-    nintendoPrimary === "N/A" ? formatGrowthPct(market.nintendoGrowthPct) : nintendoPrimary;
+  const nintendoChangeDisplay = formatSignedChange(market.nintendoChangeAbs, market.nintendoChangeCurrency);
 
   return (
     <section className="rounded-3xl border border-white/10 bg-slate-900 p-6 hover-lift">
@@ -301,17 +299,16 @@ export default function BacktrackMarketSection({
               onMouseLeave={() => setHighlight(null)}
             >
               <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                {market.nintendoSource === "tokyo"
-                  ? "Nintendo (Tokyo · change JPY)"
-                  : "Nintendo (NTDOY)"}
+                {market.nintendoSource === "tokyo" ? "Nintendo (Tokyo)" : "Nintendo (NTDOY)"}
               </p>
               <p
                 className={`text-xl font-bold tabular-nums leading-tight sm:text-2xl ${growthPctColorClass(market.nintendoGrowthPct, "nintendo")}`}
               >
-                {nintendoDisplayPrimary}
+                {formatUsd(market.nintendo)}
               </p>
               <p className="text-[11px] leading-snug text-slate-500">
-                {market.nintendoGrowthPct !== null ? `(${formatGrowthPct(market.nintendoGrowthPct)}) · ` : ""}
+                {nintendoChangeDisplay !== "N/A" ? `${nintendoChangeDisplay} · ` : ""}
+                {market.nintendoGrowthPct !== null ? `${formatGrowthPct(market.nintendoGrowthPct)} · ` : ""}
                 level: {formatUsd(market.nintendo)}
                 {market.nintendoSource === "tokyo" ? " (USD est.)" : ""}
                 {market.nintendoPreviousClose !== null ? (

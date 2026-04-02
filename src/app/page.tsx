@@ -11,6 +11,11 @@ import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import { HOME_PAGE_DATA_CACHE_TTL_SEC, HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
+import {
+  fetchPokemonByIdentifier,
+  fetchPokemonNameCatalog,
+  rankPokemonMatchesFromSources,
+} from "@/lib/pokemonApi";
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
 import {
   readBacktrackBaselineFromDb,
@@ -337,10 +342,6 @@ function normalize(value: string) {
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
-}
-
-function escapeRegex(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Count weighted headline signals with a per-item cap to avoid spam-like inflation.
@@ -1500,13 +1501,6 @@ function formatInteger(value: number) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
 
-function titleCase(value: string) {
-  return value
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 function sourceQuality(source: string) {
   const normalized = normalize(source);
   const premium = [
@@ -1553,66 +1547,11 @@ function pubDateMs(item: NewsItem) {
   return Number.isNaN(t) ? 0 : t;
 }
 
-function normalizePokemonToken(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-async function fetchPokemonNameCatalog() {
-  try {
-    const res = await fetch("https://pokeapi.co/api/v2/pokemon?limit=2000", {
-      next: { revalidate: 86400 },
-    });
-    if (!res.ok) return [] as string[];
-    const payload = (await res.json()) as { results?: Array<{ name?: string }> };
-    return (payload.results ?? []).map((entry) => entry.name ?? "").filter(Boolean);
-  } catch {
-    return [] as string[];
-  }
-}
-
 /** Minimum weighted score to count a name as a real mention (title+summary only). */
 const FEED_POKEMON_MENTION_FLOOR = 3;
 
 /** Min aggregate weighted score across headlines to prefer “news Pokémon” over the daily hash. */
 const NEWS_POD_MIN_AGGREGATE = 8;
-
-function rankPokemonMatchesFromSources(
-  sources: Array<{ text: string; weight: number }>,
-  names: string[],
-) {
-  const scored = new Map<string, { score: number; firstIndex: number }>();
-
-  for (const source of sources) {
-    const text = normalizePokemonToken(source.text);
-    if (!text) continue;
-
-    for (const name of names) {
-      const normalizedName = normalizePokemonToken(name.replace(/-/g, " "));
-      if (!normalizedName) continue;
-      const regex = new RegExp(`(^|\\s)${escapeRegex(normalizedName)}(?=\\s|$)`, "g");
-      let hits = 0;
-      let first = -1;
-      let match = regex.exec(text);
-      while (match) {
-        hits += 1;
-        if (first < 0) first = match.index;
-        if (hits >= 5) break;
-        match = regex.exec(text);
-      }
-      if (hits === 0) continue;
-
-      const existing = scored.get(name) ?? { score: 0, firstIndex: first };
-      existing.score += hits * source.weight;
-      existing.firstIndex =
-        existing.firstIndex < 0 ? first : first < 0 ? existing.firstIndex : Math.min(existing.firstIndex, first);
-      scored.set(name, existing);
-    }
-  }
-
-  return Array.from(scored.entries())
-    .map(([name, stats]) => ({ name, ...stats }))
-    .sort((a, b) => b.score - a.score || a.firstIndex - b.firstIndex);
-}
 
 function extractPokemonMentionsFromText(
   sources: Array<{ text: string; weight: number }>,
@@ -1622,38 +1561,6 @@ function extractPokemonMentionsFromText(
   return rankPokemonMatchesFromSources(sources, names)
     .map((entry) => entry.name)
     .slice(0, max);
-}
-
-async function fetchPokemonByIdentifier(identifier: string | number): Promise<PokemonOfDay | null> {
-  const url = `https://pokeapi.co/api/v2/pokemon/${identifier}`;
-  try {
-    const res = await fetch(url, { next: { revalidate: 86400 } });
-    if (!res.ok) return null;
-    const payload = (await res.json()) as {
-      id: number;
-      name: string;
-      sprites?: {
-        other?: {
-          "official-artwork"?: {
-            front_default?: string | null;
-          };
-        };
-      };
-      types?: Array<{ type?: { name?: string } }>;
-    };
-
-    return {
-      id: payload.id,
-      name: titleCase(payload.name),
-      image: payload.sprites?.other?.["official-artwork"]?.front_default ?? null,
-      types: (payload.types ?? [])
-        .map((entry) => entry.type?.name ?? "")
-        .filter(Boolean)
-        .map((name) => titleCase(name)),
-    };
-  } catch {
-    return null;
-  }
 }
 
 /** Reddit is excluded from the Pokémon highlight / spotlight article (non-Reddit sources only). */
@@ -2316,36 +2223,43 @@ export default async function Home() {
                   <p className="text-[10px] uppercase tracking-[0.14em] text-cyan-300">
                     Pokemon Highlight
                   </p>
-                  <div className="mt-2 flex min-h-0 flex-1 items-start gap-3">
-                    {pokemonOfDay.image ? (
-            <Image
-                        src={pokemonOfDay.image}
-                        alt={pokemonOfDay.name}
-                        width={64}
-                        height={64}
-                        className="h-16 w-16 shrink-0 rounded-lg bg-slate-900 object-contain p-1"
-                        unoptimized
-                      />
-                    ) : (
-                      <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
-                        N/A
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold leading-snug text-white">
-                        #{pokemonOfDay.id} {pokemonOfDay.name}
-                      </p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {pokemonOfDay.types.map((type) => (
-                          <span
-                            key={type}
-                            className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] text-fuchsia-200"
-                          >
-                            {type}
-                          </span>
-                        ))}
+                  <div className="mt-2 flex min-h-0 flex-1 flex-col justify-between gap-2">
+                    <div className="flex min-h-0 items-start gap-3">
+                      {pokemonOfDay.image ? (
+                        <Image
+                          src={pokemonOfDay.image}
+                          alt={pokemonOfDay.name}
+                          width={72}
+                          height={72}
+                          className="h-[72px] w-[72px] shrink-0 rounded-lg bg-slate-900 object-contain p-1.5"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">
+                          N/A
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold leading-snug text-white">
+                          #{pokemonOfDay.id} {pokemonOfDay.name}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {pokemonOfDay.types.map((type) => (
+                            <span
+                              key={type}
+                              className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] text-fuchsia-200"
+                            >
+                              {type}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     </div>
+                    <p className="line-clamp-3 text-[11px] leading-snug text-slate-400">
+                      {pokemonOfDayArticle?.title ??
+                        pokemonOfDayArticle?.summary ??
+                        "Daily spotlight with robust name matching across Pokemon forms and aliases."}
+                    </p>
                   </div>
                 </a>
               ) : null}
