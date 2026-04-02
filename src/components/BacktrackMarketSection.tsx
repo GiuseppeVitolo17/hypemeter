@@ -298,7 +298,7 @@ export default function BacktrackMarketSection({
             >
               <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">
                 {market.nintendoSource === "tokyo"
-                  ? "Nintendo (Tokyo · USD est.)"
+                  ? "Nintendo (Tokyo · change JPY)"
                   : "Nintendo (NTDOY)"}
               </p>
               <p
@@ -309,6 +309,7 @@ export default function BacktrackMarketSection({
               <p className="text-[11px] leading-snug text-slate-500">
                 {market.nintendoGrowthPct !== null ? `(${formatGrowthPct(market.nintendoGrowthPct)}) · ` : ""}
                 level: {formatUsd(market.nintendo)}
+                {market.nintendoSource === "tokyo" ? " (USD est.)" : ""}
                 {market.nintendoPreviousClose !== null ? (
                   <span className="text-slate-500">
                     {" "}

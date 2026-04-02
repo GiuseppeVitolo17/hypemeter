@@ -17,8 +17,11 @@ export function formatGrowthPct(value: number | null) {
   return `${sign}${value.toFixed(2)}%`;
 }
 
-export function formatSignedChange(value: number | null, currency: "JPY" | "USD" | null) {
-  if (value === null || Number.isNaN(value) || currency === null) {
+export function formatSignedChange(
+  value: number | null | undefined,
+  currency: "JPY" | "USD" | null | undefined,
+) {
+  if (value == null || !Number.isFinite(value) || currency == null) {
     return "N/A";
   }
   if (currency === "JPY") {

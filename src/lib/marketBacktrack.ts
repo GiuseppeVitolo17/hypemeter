@@ -544,6 +544,23 @@ function buildRecentMonthLabels(count: number, now = new Date()): string[] {
   return out;
 }
 
+/**
+ * Sparse maps (e.g. only year-end points) can have size>8 but still render almost flat on a 24M chart.
+ * Require a minimum amount of coverage inside the actual recent window.
+ */
+function hasRecentMonthlyCoverage(
+  monthly: MonthlyCloseMap,
+  recentLabels: string[],
+  minCoveredMonths = 10,
+): boolean {
+  if (recentLabels.length === 0) return monthly.size > 0;
+  let covered = 0;
+  for (const label of recentLabels) {
+    if (monthly.has(label)) covered += 1;
+  }
+  return covered >= minCoveredMonths;
+}
+
 function alignMonthSeries(labels: string[], monthly: MonthlyCloseMap): number[] {
   const raw = labels.map((k) => monthly.get(k) ?? null);
   const firstIdx = raw.findIndex((v) => v != null);
@@ -642,23 +659,24 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   let spMonthly = spM;
   let btcMonthly = btcM;
   let ntMonthly = mergeMonthlyMaps(ntUsM, ntPlainM);
+  const monthLabels = buildRecentMonthLabels(24);
 
   // Stooq can occasionally return empty bodies; Yahoo chart API is a robust fallback source.
-  if (spMap.size === 0 || spMonthly.size < 8) {
+  if (spMap.size === 0 || !hasRecentMonthlyCoverage(spMonthly, monthLabels)) {
     const spYahoo = await timedAsync("overlay:yahoo:sp500", () => fetchYahooMonthlyClosesBySymbol("^GSPC"));
     if (spYahoo.size > 0) {
       spMonthly = mergeMonthlyMaps(spYahoo, spMonthly);
       spMap = mergeYearlyMaps(yearlyFromMonthly(spYahoo), spMap);
     }
   }
-  if (btcMap.size === 0 || btcMonthly.size < 8) {
+  if (btcMap.size === 0 || !hasRecentMonthlyCoverage(btcMonthly, monthLabels)) {
     const btcYahoo = await timedAsync("overlay:yahoo:btc", () => fetchYahooMonthlyClosesBySymbol("BTC-USD"));
     if (btcYahoo.size > 0) {
       btcMonthly = mergeMonthlyMaps(btcYahoo, btcMonthly);
       btcMap = mergeYearlyMaps(yearlyFromMonthly(btcYahoo), btcMap);
     }
   }
-  if (ntMap.size === 0 || ntMonthly.size < 8) {
+  if (ntMap.size === 0 || !hasRecentMonthlyCoverage(ntMonthly, monthLabels)) {
     const ntYahooUsd = await timedAsync("overlay:yahoo:nintendoUsd", () =>
       fetchYahooMonthlyClosesBySymbol("NTDOY"),
     );
@@ -683,7 +701,6 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     ntAligned = alignYearSeries(years, ntMap);
   }
   const inflationYoY = alignYearSeries(years, cpiYoYMap);
-  const monthLabels = buildRecentMonthLabels(24);
   const spMonthlyAligned = alignMonthSeries(monthLabels, spMonthly);
   const btcMonthlyAligned = alignMonthSeries(monthLabels, btcMonthly);
   const ntMonthlyAligned = alignMonthSeries(monthLabels, ntMonthly);

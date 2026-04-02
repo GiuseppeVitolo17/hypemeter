@@ -235,6 +235,47 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Runtime snapshot rows can outlive schema changes; normalize before rendering to avoid NaN/undefined UI.
+ */
+function normalizeMarketSnapshot(snapshot: MarketSnapshot): MarketSnapshot {
+  const nintendo = finiteOrNull(snapshot.nintendo);
+  const nintendoPreviousClose = finiteOrNull(snapshot.nintendoPreviousClose);
+  const source = snapshot.nintendoSource;
+  const rawChangeAbs = finiteOrNull(snapshot.nintendoChangeAbs);
+  const changeAbs =
+    rawChangeAbs ??
+    (source === "adr" && nintendo !== null && nintendoPreviousClose !== null
+      ? nintendo - nintendoPreviousClose
+      : null);
+  const changeCurrency =
+    snapshot.nintendoChangeCurrency ??
+    (changeAbs !== null && source === "tokyo"
+      ? "JPY"
+      : changeAbs !== null && source === "adr"
+        ? "USD"
+        : null);
+  return {
+    sp500: finiteOrNull(snapshot.sp500),
+    bitcoin: finiteOrNull(snapshot.bitcoin),
+    nintendo,
+    nintendoPreviousClose,
+    nintendoChangeAbs: changeAbs,
+    nintendoChangeCurrency: changeCurrency,
+    sp500GrowthPct: finiteOrNull(snapshot.sp500GrowthPct),
+    bitcoinGrowthPct: finiteOrNull(snapshot.bitcoinGrowthPct),
+    nintendoGrowthPct: finiteOrNull(snapshot.nintendoGrowthPct),
+    updatedAt: typeof snapshot.updatedAt === "string" ? snapshot.updatedAt : null,
+    nintendoSource: snapshot.nintendoSource,
+    sp500Source: snapshot.sp500Source,
+    bitcoinSource: snapshot.bitcoinSource,
+  };
+}
+
 // Lightweight XML tag extractor used across RSS-style feeds.
 function readTag(itemXml: string, tag: string) {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i");
@@ -1932,11 +1973,11 @@ async function loadHomePageDataUncached() {
     items = [];
   }
 
-  let market = await marketPromise;
+  let market = normalizeMarketSnapshot(await marketPromise);
   if (market.sp500 === null && market.bitcoin === null) {
     const cachedMarket = readRuntimeSnapshotFromDb<MarketSnapshot>("market_snapshot");
     if (cachedMarket) {
-      market = cachedMarket;
+      market = normalizeMarketSnapshot(cachedMarket);
     }
   }
   upsertRuntimeSnapshotToDb("market_snapshot", market);
