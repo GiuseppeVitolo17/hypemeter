@@ -88,8 +88,8 @@ type PokemonOfDayArticle = {
   pokemonMentions: string[];
 };
 
-// Always render dynamically so the market sidecar (and other live fetches) never come from stale ISR HTML.
-export const dynamic = "force-dynamic";
+// Let Next decide route caching strategy; freshness comes from `unstable_cache` + revalidation tags.
+export const dynamic = "auto";
 
 /**
  * Pro/Enterprise: up to 60s. **Vercel Hobby caps serverless at ~10s** — keep upstream work bounded
@@ -646,7 +646,7 @@ async function fetchYouTubeTraffic() {
     {
       headers: { "user-agent": "Mozilla/5.0", "accept-language": "en-US,en;q=0.9" },
       next: { revalidate: 900 },
-      timeoutMs: 8000,
+      timeoutMs: 4500,
     },
   );
   if (!res?.ok) return { current: 0, previous: 0 };
@@ -673,7 +673,7 @@ async function fetchFacebookTraffic() {
   const res = await fetchWithTimeout("https://r.jina.ai/http://www.facebook.com/Pokemon", {
     headers: { "user-agent": "Mozilla/5.0" },
     next: { revalidate: 900 },
-    timeoutMs: 9000,
+    timeoutMs: 4500,
   });
   if (!res?.ok) return { facebookCurrent: 0, facebookPrevious: 0, officialCurrent: 0, officialPrevious: 0 };
   const text = await res.text();
@@ -703,7 +703,7 @@ async function fetchThreadsTraffic() {
   const res = await fetchWithTimeout("https://r.jina.ai/http://www.threads.net/@pokemon", {
     headers: { "user-agent": "Mozilla/5.0" },
     next: { revalidate: 900 },
-    timeoutMs: 9000,
+    timeoutMs: 4500,
   });
   if (!res?.ok) return { current: 0, previous: 0 };
   const text = await res.text();
@@ -836,7 +836,7 @@ async function fetchSearchInterestStats(items: NewsItem[] = []): Promise<SearchI
   try {
     const response = await fetchWithTimeout(GOOGLE_TRENDS_DAILY_RSS, {
       next: { revalidate: 900 },
-      timeoutMs: 8000,
+      timeoutMs: 5000,
     });
     if (!response?.ok) {
       return {
@@ -1612,48 +1612,6 @@ function isRedditSource(item: NewsItem): boolean {
   return /reddit\.com/i.test(item.link);
 }
 
-function pickArticleOfDay(items: NewsItem[], pokemonCatalog: string[]): PokemonOfDayArticle | null {
-  const candidates = items.filter((item) => !isRedditSource(item));
-  if (candidates.length === 0) return null;
-  const ranked = candidates
-    .map((item) => {
-      const mentions = extractPokemonMentionsFromText(
-        [
-          { text: item.title, weight: 2.5 },
-          { text: item.summary, weight: 1.6 },
-        ],
-        pokemonCatalog,
-        6,
-      );
-      const mentionBoost = mentions.length > 0 ? 8 + Math.min(8, mentions.length * 3) : 0;
-      return { item, score: scoreArticleRelevance(item) + mentionBoost, mentions };
-    })
-    .sort((a, b) => {
-      const ha = hoursAgo(a.item.pubDate);
-      const hb = hoursAgo(b.item.pubDate);
-      const recentA = ha <= 24 ? 1 : 0;
-      const recentB = hb <= 24 ? 1 : 0;
-      if (recentB !== recentA) return recentB - recentA;
-      const tb = pubDateMs(b.item);
-      const ta = pubDateMs(a.item);
-      if (tb !== ta) return tb - ta;
-      return b.score - a.score;
-    });
-
-  const best = ranked[0];
-  const bestItem = best?.item;
-  const mentions = best?.mentions ?? [];
-  if (!bestItem) return null;
-  if (!best) return null;
-  return {
-    title: bestItem.title,
-    link: bestItem.link,
-    source: bestItem.source,
-    summary: bestItem.summary,
-    pokemonMentions: mentions,
-  };
-}
-
 function hashStringToRange(input: string, min: number, max: number) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -1784,6 +1742,51 @@ function pokemonPokedexUrl(name: string): string {
   return slug ? `https://www.pokemon.com/us/pokedex/${slug}` : "https://www.pokemon.com/us/pokedex/";
 }
 
+async function fetchHomeNewsItemsForPokemonDay(): Promise<NewsItem[]> {
+  const responses = await Promise.all(
+    [NEWS_URL, NEWS_URL_BACKUP].map((url) =>
+      fetchWithTimeout(url, {
+        next: { revalidate: 300 },
+        headers: { "user-agent": "Mozilla/5.0 hypemeter" },
+        timeoutMs: 7000,
+      }),
+    ),
+  );
+  for (const response of responses) {
+    if (!response?.ok) continue;
+    const xml = await response.text();
+    const parsed = parseNews(xml);
+    const curated = curateNewsItems(parsed);
+    const fallback = parsed.filter((item) => /(pokemon|pokémon)/i.test(item.title));
+    const selected = (curated.length > 0 ? curated : fallback).slice(0, 28);
+    if (selected.length > 0) return selected;
+  }
+  return [];
+}
+
+const resolvePokemonOfDayBundleCached = unstable_cache(
+  async (
+    dayKey: string,
+  ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null; article: PokemonOfDayArticle | null }> => {
+    void dayKey;
+    const [items, catalog] = await Promise.all([
+      fetchHomeNewsItemsForPokemonDay(),
+      fetchPokemonNameCatalog(),
+    ]);
+    const { pokemon, winnerSlug } = await resolvePokemonOfDay(items, catalog);
+    // Keep article consistent with the selected Pokemon only (no unrelated fallback article).
+    let article =
+      winnerSlug && items.length > 0 ? pickSpotlightArticleForPokemon(items, winnerSlug, catalog) : null;
+    if (!article && pokemon && items.length > 0) {
+      const slugFromName = pokemon.name.toLowerCase().replace(/\s+/g, "-");
+      article = pickSpotlightArticleForPokemon(items, slugFromName, catalog);
+    }
+    return { pokemon, winnerSlug, article };
+  },
+  ["pokemon-of-day-daily-v1"],
+  { revalidate: 24 * 60 * 60 },
+);
+
 async function resolvePokemonOfDay(
   items: NewsItem[],
   catalog: string[],
@@ -1881,17 +1884,22 @@ async function loadHomePageDataUncached() {
   let marketMomentum = 50;
   let eventCatalyst = 40;
   let communitySentiment = 50;
+  // Independent from news; start immediately so cold requests finish faster.
+  const marketPromise = timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot());
   try {
     await timedAsync("home:googleNewsRss", async () => {
-      const newsCandidates = [NEWS_URL, NEWS_URL_BACKUP];
-      for (const url of newsCandidates) {
-        const response = await fetchWithTimeout(url, {
-          next: { revalidate: 300 },
-          headers: {
-            "user-agent": "Mozilla/5.0 hypemeter",
-          },
-          timeoutMs: 10_000,
-        });
+      const responses = await Promise.all(
+        [NEWS_URL, NEWS_URL_BACKUP].map((url) =>
+          fetchWithTimeout(url, {
+            next: { revalidate: 300 },
+            headers: {
+              "user-agent": "Mozilla/5.0 hypemeter",
+            },
+            timeoutMs: 7000,
+          }),
+        ),
+      );
+      for (const response of responses) {
         if (!response?.ok) continue;
         const xml = await response.text();
         const parsed = parseNews(xml);
@@ -1909,7 +1917,7 @@ async function loadHomePageDataUncached() {
     items = [];
   }
 
-  const market = await timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot());
+  const market = await marketPromise;
 
   // Pull independent external signals in parallel to minimize latency.
   [searchStats, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
@@ -1941,11 +1949,10 @@ async function loadHomePageDataUncached() {
     socialPulseScore: socialPulse.aggregateScore,
   });
   const history = buildBacktrackSeries(score);
-  const [marketOverlay, pokemonCatalog, cardTraderBestSeller] = await Promise.all([
+  const [marketOverlay, cardTraderBestSeller] = await Promise.all([
     timedAsync("home:fetchMarketYearlyOverlay", () =>
       fetchMarketYearlyOverlay(history.map((h) => h.year)),
     ),
-    timedAsync("home:fetchPokemonNameCatalog", () => fetchPokemonNameCatalog()),
     timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
   ]);
   const todayCalendarStats = buildTodayCalendarStats(
@@ -2017,15 +2024,13 @@ async function loadHomePageDataUncached() {
       barPct: socialMomentumBarPct(deltaPct),
     };
   });
-  const { pokemon: pokemonOfDay, winnerSlug: pokemonOfDayWinnerSlug } = await timedAsync(
-    "home:resolvePokemonOfDay",
-    () => resolvePokemonOfDay(items, pokemonCatalog),
+  const pokemonDayKey = calendarDateIsoInTimeZone("Europe/Rome");
+  const pokemonBundle = await timedAsync("home:resolvePokemonOfDayDailyCached", () =>
+    resolvePokemonOfDayBundleCached(pokemonDayKey),
   );
-  const pokemonOfDayArticle =
-    pokemonOfDayWinnerSlug && items.length > 0
-      ? (pickSpotlightArticleForPokemon(items, pokemonOfDayWinnerSlug, pokemonCatalog) ??
-        pickArticleOfDay(items, pokemonCatalog))
-      : pickArticleOfDay(items, pokemonCatalog);
+  const pokemonOfDay = pokemonBundle.pokemon;
+  const pokemonOfDayWinnerSlug = pokemonBundle.winnerSlug;
+  const pokemonOfDayArticle = pokemonBundle.article;
   const traderNarrative = buildTraderNarrative({
     score,
     signalQuality: liveSignalQuality,
@@ -2082,7 +2087,6 @@ async function loadHomePageDataUncached() {
     cycle30,
     history,
     marketOverlay,
-    pokemonCatalog,
     cardTraderBestSeller,
     todayCalendarStats,
     liveEventSignals,
