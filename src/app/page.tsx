@@ -25,6 +25,7 @@ import {
   upsertRuntimeSnapshotToDb,
 } from "@/lib/staticDataDb";
 import Image from "next/image";
+import Link from "next/link";
 import { unstable_cache } from "next/cache";
 
 type NewsItem = {
@@ -1133,71 +1134,6 @@ function hoursAgo(dateString: string) {
   return (Date.now() - timestamp) / (1000 * 60 * 60);
 }
 
-function startOfUtcDayMs(value: Date): number {
-  return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
-}
-
-function buildRecentDailyHeadlineCounts(items: NewsItem[], days: number): number[] {
-  const todayStart = startOfUtcDayMs(new Date());
-  const dayMs = 24 * 60 * 60 * 1000;
-  const out = new Array<number>(days).fill(0);
-  for (const item of items) {
-    const ts = new Date(item.pubDate).getTime();
-    if (Number.isNaN(ts)) continue;
-    const dayIndex = Math.floor((todayStart - startOfUtcDayMs(new Date(ts))) / dayMs);
-    if (dayIndex < 0 || dayIndex >= days) continue;
-    out[dayIndex] += 1;
-  }
-  return out;
-}
-
-function sumRange(values: number[], start: number, len: number): number {
-  let sum = 0;
-  const end = Math.min(values.length, start + len);
-  for (let i = start; i < end; i += 1) sum += values[i] ?? 0;
-  return sum;
-}
-
-function activeDaysInRange(values: number[], start: number, len: number): number {
-  let active = 0;
-  const end = Math.min(values.length, start + len);
-  for (let i = start; i < end; i += 1) {
-    if ((values[i] ?? 0) > 0) active += 1;
-  }
-  return active;
-}
-
-function computeTrendComboScore(items: NewsItem[]): number {
-  if (items.length === 0) return 42;
-  const daily = buildRecentDailyHeadlineCounts(items, 64);
-  const windows = [
-    { days: 1, weight: 2.1, minCoverage: 1.0 },
-    { days: 3, weight: 2.8, minCoverage: 0.34 },
-    { days: 5, weight: 3.5, minCoverage: 0.4 },
-    { days: 10, weight: 4.8, minCoverage: 0.4 },
-    { days: 30, weight: 6.2, minCoverage: 0.35 },
-  ] as const;
-
-  let comboBias = 0;
-  for (const window of windows) {
-    const recent = sumRange(daily, 0, window.days);
-    const previous = sumRange(daily, window.days, window.days);
-    const coverage = activeDaysInRange(daily, 0, window.days) / window.days;
-    const ratio = (recent + 1) / (previous + 1);
-    const trendStrength = clamp01(Math.abs(ratio - 1) / 0.38);
-    const consistency = clamp01((coverage - window.minCoverage + 0.35) / 0.85);
-
-    const isHot = ratio >= 1.08 && coverage >= window.minCoverage;
-    const isCold = ratio <= 0.92 && coverage <= Math.max(0.08, window.minCoverage * 0.95);
-    if (!isHot && !isCold) continue;
-
-    const signed = isHot ? 1 : -1;
-    comboBias += signed * window.weight * trendStrength * consistency;
-  }
-
-  return clampScore(50 + comboBias * 4.1);
-}
-
 // Main composite scoring engine combining external and headline-derived components.
 function summarizeHype(
   items: NewsItem[],
@@ -1307,13 +1243,12 @@ function summarizeHype(
     amplifyFromNeutral(communitySentimentScore, 1.15) + socialSpikeAdjustment * 0.4,
   );
   const productStressResponsive = amplifyFromNeutral(productStressScore, 1.26);
-  const trendComboScore = computeTrendComboScore(items);
 
   const components: SignalComponent[] = [
     {
       id: "search_interest",
       label: "Search Interest",
-      weight: 0.23,
+      weight: 0.26,
       score: searchInterestResponsive,
       description: "Demand driver from Google search intensity blended with social momentum.",
       group: "community",
@@ -1321,7 +1256,7 @@ function summarizeHype(
     {
       id: "market_momentum",
       label: "Market Momentum",
-      weight: 0.19,
+      weight: 0.2,
       score: marketMomentumResponsive,
       description: "PriceCharting momentum proxy on cards/sealed assets.",
       group: "market",
@@ -1329,7 +1264,7 @@ function summarizeHype(
     {
       id: "availability_pressure",
       label: "Availability Pressure",
-      weight: 0.17,
+      weight: 0.18,
       score: availabilityResponsive,
       description: "Confidence-adjusted sellout/preorder scarcity density.",
       group: "market",
@@ -1337,7 +1272,7 @@ function summarizeHype(
     {
       id: "release_catalyst",
       label: "Release/Event Catalyst",
-      weight: 0.13,
+      weight: 0.14,
       score: releaseResponsive,
       description: "Boost from reveals/releases with social acceleration confirmation.",
       group: "community",
@@ -1345,7 +1280,7 @@ function summarizeHype(
     {
       id: "community_sentiment",
       label: "Community Sentiment",
-      weight: 0.1,
+      weight: 0.11,
       score: communityResponsive,
       description: "Reddit tone blended with cross-platform participation breadth.",
       group: "community",
@@ -1353,19 +1288,10 @@ function summarizeHype(
     {
       id: "product_stress",
       label: "Product Stress / Queue",
-      weight: 0.1,
+      weight: 0.11,
       score: productStressResponsive,
       description: "Operational stress density (queues, delays, restrictions).",
       group: "market",
-    },
-    {
-      id: "trend_combo",
-      label: "Trend Combo (1/3/5/10/30d)",
-      weight: 0.08,
-      score: trendComboScore,
-      description:
-        "Rolling headline momentum combo: sustained uptrends add hot weight, sustained slowdowns add cold weight.",
-      group: "community",
     },
   ];
 
@@ -2216,6 +2142,7 @@ export default async function Home() {
           score,
           updatedAt,
           computedAt: cacheMeta.computedAt,
+          pokemonImageUrl: pokemonOfDay?.image ?? null,
         }}
       />
       <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[min(92rem,100%)]">
@@ -2236,6 +2163,9 @@ export default async function Home() {
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <p className="text-xs text-slate-400">Updated (UTC): {updatedAt}</p>
                   <HomeReloadButton />
+                  <Link href="/about" className="text-xs text-cyan-300 underline underline-offset-2">
+                    About
+                  </Link>
                 </div>
                 <div className="mt-1">
                   <HomeNextUpdateCountdown
@@ -2302,12 +2232,13 @@ export default async function Home() {
                     <div className="flex min-h-0 items-start gap-3">
                       {pokemonOfDay.image ? (
                         <Image
-                          src={pokemonOfDay.image}
+                          src={`/api/pokemon-highlight-image?url=${encodeURIComponent(pokemonOfDay.image)}`}
                           alt={pokemonOfDay.name}
                           width={72}
                           height={72}
                           className="h-[72px] w-[72px] shrink-0 rounded-lg bg-slate-900 object-contain p-1.5"
                           unoptimized
+                          priority
                         />
                       ) : (
                         <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-lg bg-slate-900 text-xs text-slate-400">

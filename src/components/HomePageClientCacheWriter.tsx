@@ -10,6 +10,7 @@ export type HomeBrowserBufferPayload = {
   updatedAt: string;
   /** Unix ms when the server finished computing this snapshot (stable while server cache hits). */
   computedAt: number;
+  pokemonImageUrl?: string | null;
 };
 
 /**
@@ -26,6 +27,15 @@ export function HomePageClientCacheWriter({ payload }: { payload: HomeBrowserBuf
         serverCacheTtlSec: HOME_PAGE_DATA_CACHE_TTL_SEC,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+
+      // Cookie mirror for fast repeat-load hints in the browser.
+      const expires = new Date(payload.computedAt + HOME_PAGE_DATA_CACHE_TTL_SEC * 1000).toUTCString();
+      document.cookie = `hypemeter_home_meta=${encodeURIComponent(
+        JSON.stringify({ score: payload.score, updatedAt: payload.updatedAt, computedAt: payload.computedAt }),
+      )}; path=/; expires=${expires}; SameSite=Lax`;
+      if (payload.pokemonImageUrl) {
+        document.cookie = `hypemeter_pokemon_image=${encodeURIComponent(payload.pokemonImageUrl)}; path=/; expires=${expires}; SameSite=Lax`;
+      }
     } catch {
       /* quota / private mode */
     }
