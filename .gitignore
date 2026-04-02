@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+/.data/
 
 # Project policy: no Markdown files in the repo (notes → code comments or chat only)
 *.md

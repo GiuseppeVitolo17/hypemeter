@@ -6,8 +6,14 @@
  * (1) FRED API when env `FRED_API_KEY` is set → (2) World Bank → (3) FRED `fredgraph.csv` tail parse.
  */
 
-import staticCpiYoYByYear from "@/data/staticCpiYoYByYear.json";
 import { timedAsync } from "@/lib/serverTiming";
+import {
+  readStaticCpiYoYFromDb,
+  readStooqMonthlyCloseFromDb,
+  readStooqYearlyCloseFromDb,
+  upsertStooqMonthlyClose,
+  upsertStooqYearlyClose,
+} from "@/lib/staticDataDb";
 
 export type MarketHighlightKey = "sp500" | "btc" | "nintendo" | "inflation";
 
@@ -177,11 +183,7 @@ export function buildCpiYoYPercentByYearFromMonthlyRows(monthly: CpiMonthRow[]):
 }
 
 function loadStaticCpiYoYMap(): Map<number, number> {
-  const m = new Map<number, number>();
-  for (const [k, v] of Object.entries(staticCpiYoYByYear as Record<string, number>)) {
-    m.set(Number(k), v);
-  }
-  return m;
+  return readStaticCpiYoYFromDb();
 }
 
 /** Only years drawn on the hype chart — avoids carrying unused YoY keys in the overlay map. */
@@ -375,6 +377,7 @@ async function fetchFredCpiYoYByYear(chartYears: number[]): Promise<Map<number, 
 }
 
 async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<YearlyCloseMap> {
+  const cached = readStooqYearlyCloseFromDb(stooqSymbol);
   try {
     const d1 = "20050101";
     const d2 = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -384,10 +387,20 @@ async function fetchStooqYearlyClosesBySymbol(stooqSymbol: string): Promise<Year
       headers: { "user-agent": STOOQ_HIST_UA },
       signal: AbortSignal.timeout(HIST_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return new Map();
-    return parseStooqDailyHistoryToYearlyLastClose(await res.text());
+    if (!res.ok) return cached;
+    const parsed = parseStooqDailyHistoryToYearlyLastClose(await res.text());
+    const currentYear = new Date().getUTCFullYear();
+    const immutable = new Map<number, number>();
+    for (const [year, close] of parsed) {
+      if (year < currentYear) immutable.set(year, close);
+    }
+    upsertStooqYearlyClose(stooqSymbol, immutable);
+    // Merge cached + fresh (fresh wins for overlaps).
+    const merged = new Map<number, number>(cached);
+    for (const [year, close] of parsed) merged.set(year, close);
+    return merged;
   } catch {
-    return new Map();
+    return cached;
   }
 }
 
@@ -395,6 +408,7 @@ async function fetchStooqMonthlyClosesBySymbol(
   stooqSymbol: string,
   windowMonths = 30,
 ): Promise<MonthlyCloseMap> {
+  const cached = readStooqMonthlyCloseFromDb(stooqSymbol);
   try {
     const d2 = new Date();
     const d1 = new Date(d2);
@@ -407,10 +421,20 @@ async function fetchStooqMonthlyClosesBySymbol(
       headers: { "user-agent": STOOQ_HIST_UA },
       signal: AbortSignal.timeout(HIST_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return new Map();
-    return parseStooqDailyHistoryToMonthlyLastClose(await res.text());
+    if (!res.ok) return cached;
+    const parsed = parseStooqDailyHistoryToMonthlyLastClose(await res.text());
+    const now = new Date();
+    const currentYm = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+    const immutable = new Map<string, number>();
+    for (const [ym, close] of parsed) {
+      if (ym < currentYm) immutable.set(ym, close);
+    }
+    upsertStooqMonthlyClose(stooqSymbol, immutable);
+    const merged = new Map<string, number>(cached);
+    for (const [ym, close] of parsed) merged.set(ym, close);
+    return merged;
   } catch {
-    return new Map();
+    return cached;
   }
 }
 
@@ -483,11 +507,27 @@ export function normalizeTo100(values: number[], options?: NormalizeTo100Options
   return values.map((v) => ((v - min) / (max - min)) * 100);
 }
 
+const lastGoodOverlayByYears = new Map<string, MarketYearlyOverlay>();
+
+function yearsKey(years: number[]): string {
+  return years.join(",");
+}
+
+function overlayHasCoreVariance(overlay: MarketYearlyOverlay): boolean {
+  return (
+    seriesHasVariance(overlay.sp500) ||
+    seriesHasVariance(overlay.btc) ||
+    seriesHasVariance(overlay.nintendo)
+  );
+}
+
 /** Parallel fetch + per-asset normalization (same Y scale as hype 0–100). */
 export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketYearlyOverlay> {
   if (years.length === 0) {
     return { sp500: [], btc: [], nintendo: [], inflationYoY: [], inflation: [], monthly: undefined };
   }
+  const key = yearsKey(years);
+  const previousGood = lastGoodOverlayByYears.get(key);
   const [spS, btcS, ntUs, ntPlain, cpiYoYMap, spM, btcM, ntUsM, ntPlainM] = await Promise.all([
     timedAsync("overlay:stooq^spx", () => fetchStooqYearlyClosesBySymbol("^spx")),
     timedAsync("overlay:stooqbtcusd", () => fetchStooqYearlyClosesBySymbol("btcusd")),
@@ -516,12 +556,15 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
   const monthLabels = buildRecentMonthLabels(24);
   const ntMonthly = new Map<string, number>(ntPlainM);
   for (const [k, v] of ntUsM) ntMonthly.set(k, v);
+  const spMonthlyAligned = alignMonthSeries(monthLabels, spM);
+  const btcMonthlyAligned = alignMonthSeries(monthLabels, btcM);
+  const ntMonthlyAligned = alignMonthSeries(monthLabels, ntMonthly);
   const monthlyInflationYoY = monthLabels.map((label) => {
     const y = Number(label.slice(0, 4));
     const v = cpiYoYMap.get(y);
     return v ?? 0;
   });
-  return {
+  let overlay: MarketYearlyOverlay = {
     sp500: normalizeTo100(spAligned, { degenerateBias: 0 }),
     btc: normalizeTo100(btcAligned, { degenerateBias: 0.55 }),
     nintendo: normalizeTo100(ntAligned, { degenerateBias: -0.55 }),
@@ -529,11 +572,31 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     inflation: normalizeTo100(inflationYoY, { degenerateBias: 0.25 }),
     monthly: {
       labels: monthLabels,
-      sp500: normalizeTo100(alignMonthSeries(monthLabels, spM), { degenerateBias: 0 }),
-      btc: normalizeTo100(alignMonthSeries(monthLabels, btcM), { degenerateBias: 0.55 }),
-      nintendo: normalizeTo100(alignMonthSeries(monthLabels, ntMonthly), { degenerateBias: -0.55 }),
+      sp500: normalizeTo100(spMonthlyAligned, { degenerateBias: 0 }),
+      btc: normalizeTo100(btcMonthlyAligned, { degenerateBias: 0.55 }),
+      nintendo: normalizeTo100(ntMonthlyAligned, { degenerateBias: -0.55 }),
       inflationYoY: monthlyInflationYoY,
       inflation: normalizeTo100(monthlyInflationYoY, { degenerateBias: 0.25 }),
     },
   };
+
+  // If one upstream source fails and collapses to a flat neutral line, keep prior valid shape.
+  if (previousGood) {
+    if (!seriesHasVariance(spAligned)) overlay.sp500 = previousGood.sp500;
+    if (!seriesHasVariance(btcAligned)) overlay.btc = previousGood.btc;
+    if (!seriesHasVariance(ntAligned)) overlay.nintendo = previousGood.nintendo;
+    if (overlay.monthly && previousGood.monthly) {
+      if (!seriesHasVariance(spMonthlyAligned)) overlay.monthly.sp500 = previousGood.monthly.sp500;
+      if (!seriesHasVariance(btcMonthlyAligned)) overlay.monthly.btc = previousGood.monthly.btc;
+      if (!seriesHasVariance(ntMonthlyAligned)) overlay.monthly.nintendo = previousGood.monthly.nintendo;
+    }
+  }
+
+  if (overlayHasCoreVariance(overlay)) {
+    lastGoodOverlayByYears.set(key, overlay);
+  } else if (previousGood) {
+    overlay = previousGood;
+  }
+
+  return overlay;
 }

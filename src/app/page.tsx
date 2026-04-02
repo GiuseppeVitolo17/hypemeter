@@ -2,6 +2,7 @@ import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import { CardTraderHighlightImage } from "@/components/CardTraderHighlightImage";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
+import { HomeReloadButton } from "@/components/HomeReloadButton";
 import HypeGauge from "@/components/HypeGauge";
 import ScrollReveal from "@/components/ScrollReveal";
 import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
@@ -10,6 +11,13 @@ import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import { HOME_PAGE_DATA_CACHE_TTL_SEC, HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
 import { logTimingTotal, timedAsync } from "@/lib/serverTiming";
+import {
+  readBacktrackBaselineFromDb,
+  readPokemonDayBundleFromDb,
+  readRuntimeSnapshotFromDb,
+  upsertPokemonDayBundleToDb,
+  upsertRuntimeSnapshotToDb,
+} from "@/lib/staticDataDb";
 import Image from "next/image";
 import { unstable_cache } from "next/cache";
 
@@ -1409,33 +1417,12 @@ function meterColor(score: number) {
 // Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
-  const baselines: Record<number, number> = {
-    2005: 43,
-    2006: 61,
-    2007: 55,
-    2008: 49,
-    2009: 52,
-    2010: 68,
-    2011: 59,
-    2012: 57,
-    2013: 50,
-    2014: 54,
-    2015: 58,
-    2016: 96,
-    2017: 75,
-    2018: 66,
-    2019: 70,
-    2020: 73,
-    2021: 79,
-    2022: 72,
-    2023: 76,
-    2024: 82,
-    2025: 69,
-  };
+  const baselines = readBacktrackBaselineFromDb();
+  const fallbackBaseline = baselines.get(2025) ?? 69;
 
   const data: YearScore[] = [];
   for (let year = 2005; year <= currentYear; year += 1) {
-    const baseline = baselines[year] ?? baselines[2025];
+    const baseline = baselines.get(year) ?? fallbackBaseline;
     data.push({ year, score: clampScore(baseline) });
   }
 
@@ -1768,7 +1755,12 @@ const resolvePokemonOfDayBundleCached = unstable_cache(
   async (
     dayKey: string,
   ): Promise<{ pokemon: PokemonOfDay | null; winnerSlug: string | null; article: PokemonOfDayArticle | null }> => {
-    void dayKey;
+    const cached = readPokemonDayBundleFromDb<{
+      pokemon: PokemonOfDay | null;
+      winnerSlug: string | null;
+      article: PokemonOfDayArticle | null;
+    }>(dayKey);
+    if (cached) return cached;
     const [items, catalog] = await Promise.all([
       fetchHomeNewsItemsForPokemonDay(),
       fetchPokemonNameCatalog(),
@@ -1781,7 +1773,9 @@ const resolvePokemonOfDayBundleCached = unstable_cache(
       const slugFromName = pokemon.name.toLowerCase().replace(/\s+/g, "-");
       article = pickSpotlightArticleForPokemon(items, slugFromName, catalog);
     }
-    return { pokemon, winnerSlug, article };
+    const payload = { pokemon, winnerSlug, article };
+    upsertPokemonDayBundleToDb(dayKey, payload);
+    return payload;
   },
   ["pokemon-of-day-daily-v1"],
   { revalidate: 24 * 60 * 60 },
@@ -1917,7 +1911,14 @@ async function loadHomePageDataUncached() {
     items = [];
   }
 
-  const market = await marketPromise;
+  let market = await marketPromise;
+  if (market.sp500 === null && market.bitcoin === null) {
+    const cachedMarket = readRuntimeSnapshotFromDb<MarketSnapshot>("market_snapshot");
+    if (cachedMarket) {
+      market = cachedMarket;
+    }
+  }
+  upsertRuntimeSnapshotToDb("market_snapshot", market);
 
   // Pull independent external signals in parallel to minimize latency.
   [searchStats, marketMomentum, eventCatalyst, communitySentiment] = await Promise.all([
@@ -1955,6 +1956,9 @@ async function loadHomePageDataUncached() {
     ),
     timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
   ]);
+  if (cardTraderBestSeller) {
+    upsertRuntimeSnapshotToDb("card_highlight_best_seller", cardTraderBestSeller);
+  }
   const todayCalendarStats = buildTodayCalendarStats(
     items.slice(0, 20),
     score,
@@ -2172,7 +2176,10 @@ export default async function Home() {
                   A real-time snapshot of Pokemon buzz, built from live headlines and
                   trend signals.
                 </p>
-                <p className="mt-2 text-xs text-slate-400">Updated: {updatedAt}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-slate-400">Updated: {updatedAt}</p>
+                  <HomeReloadButton />
+                </div>
               </div>
               {cardTraderBestSeller ? (
                 <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-3 lg:w-56">
