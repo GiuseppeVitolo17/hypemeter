@@ -2590,14 +2590,12 @@ export default async function Home() {
                     return <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />;
                   })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <a
-                      href="https://en.wikipedia.org/wiki/Momentum_(finance)"
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href="/momentum"
                       className="w-fit text-[10px] uppercase tracking-[0.12em] text-slate-300 underline decoration-cyan-300/65 underline-offset-2 transition-colors hover:text-cyan-200"
                     >
                       Momentum
-                    </a>
+                    </Link>
                     <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
                       {narrativeCardLabel(traderNarrative.momentumTag, "momentum")}
                     </p>
@@ -2609,14 +2607,12 @@ export default async function Home() {
                     return <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />;
                   })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <a
-                      href="https://en.wikipedia.org/wiki/Breadth_of_market"
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href="/breadth"
                       className="w-fit text-[10px] uppercase tracking-[0.12em] text-slate-300 underline decoration-cyan-300/65 underline-offset-2 transition-colors hover:text-cyan-200"
                     >
                       Breadth
-                    </a>
+                    </Link>
                     <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
                       {narrativeCardLabel(traderNarrative.breadthTag, "breadth")}
                     </p>
@@ -2628,14 +2624,12 @@ export default async function Home() {
                     return <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />;
                   })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <a
-                      href="https://naturalinvestments.com/the-meaning-of-conviction/"
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href="/conviction"
                       className="w-fit text-[10px] uppercase tracking-[0.12em] text-slate-300 underline decoration-cyan-300/65 underline-offset-2 transition-colors hover:text-cyan-200"
                     >
                       Conviction
-                    </a>
+                    </Link>
                     <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
                       {narrativeCardLabel(traderNarrative.convictionTag, "conviction")}
                     </p>
