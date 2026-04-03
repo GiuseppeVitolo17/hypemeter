@@ -1,6 +1,7 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
 import { CardHighlightPanel } from "@/components/CardHighlightPanel";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
+import { NarrativeFlipCards } from "@/components/NarrativeFlipCards";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
 import { HomeNextUpdateCountdown } from "@/components/HomeNextUpdateCountdown";
 import { HomeReloadButton } from "@/components/HomeReloadButton";
@@ -1669,6 +1670,23 @@ function narrativeCardLabel(tag: string, kind: "momentum" | "breadth" | "convict
   return tag;
 }
 
+function narrativeCardExplanation(tag: string, kind: "momentum" | "breadth" | "conviction"): string {
+  const t = tag.toLowerCase();
+  if (kind === "momentum") {
+    if (t.includes("up")) return "Trend strength is positive. Buyers are in control and pullbacks are usually buyable with disciplined stops.";
+    if (t.includes("range")) return "Momentum is balanced. Market rotates in a range, so selective entries and tighter risk control work best.";
+    return "Momentum is soft. Prioritize defense, smaller position sizing, and wait for stronger confirmation.";
+  }
+  if (kind === "breadth") {
+    if (t.includes("broad")) return "Participation is broad across signals, which usually makes moves cleaner and more durable.";
+    if (t.includes("mixed")) return "Participation is mixed. Some signals confirm while others lag, so conviction should stay moderate.";
+    return "Participation is narrow. Fewer signals support the move, so breakouts are less reliable.";
+  }
+  if (t.includes("high")) return "Signal quality is high. Setup confidence improves, with better follow-through probability.";
+  if (t.includes("medium")) return "Signal quality is moderate. Respect opportunities, but avoid over-sizing before stronger alignment.";
+  return "Signal quality is low. Noise is elevated, so reduce risk and wait for clearer structure.";
+}
+
 // Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
@@ -2521,56 +2539,31 @@ export default async function Home() {
               </div>
             </div>
             <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,2.15fr)_minmax(14.5rem,0.65fr)] xl:items-stretch">
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  {(() => {
-                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"));
-                    return (
-                      <>
-                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                      </>
-                    );
-                  })()}
-                  <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Momentum</p>
-                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
-                      {narrativeCardLabel(traderNarrative.momentumTag, "momentum")}
-                    </p>
-                  </div>
-                </div>
-                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  {(() => {
-                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"));
-                    return (
-                      <>
-                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                      </>
-                    );
-                  })()}
-                  <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Breadth</p>
-                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
-                      {narrativeCardLabel(traderNarrative.breadthTag, "breadth")}
-                    </p>
-                  </div>
-                </div>
-                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  {(() => {
-                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"));
-                    return (
-                      <>
-                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                      </>
-                    );
-                  })()}
-                  <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Conviction</p>
-                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
-                      {narrativeCardLabel(traderNarrative.convictionTag, "conviction")}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <NarrativeFlipCards
+                items={[
+                  {
+                    id: "momentum",
+                    title: "Momentum",
+                    label: narrativeCardLabel(traderNarrative.momentumTag, "momentum"),
+                    fillPct: Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum")),
+                    explanation: narrativeCardExplanation(traderNarrative.momentumTag, "momentum"),
+                  },
+                  {
+                    id: "breadth",
+                    title: "Breadth",
+                    label: narrativeCardLabel(traderNarrative.breadthTag, "breadth"),
+                    fillPct: Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth")),
+                    explanation: narrativeCardExplanation(traderNarrative.breadthTag, "breadth"),
+                  },
+                  {
+                    id: "conviction",
+                    title: "Conviction",
+                    label: narrativeCardLabel(traderNarrative.convictionTag, "conviction"),
+                    fillPct: Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction")),
+                    explanation: narrativeCardExplanation(traderNarrative.convictionTag, "conviction"),
+                  },
+                ]}
+              />
               <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 xl:h-full">
                 <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
