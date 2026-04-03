@@ -2461,10 +2461,7 @@ export default async function Home() {
                     const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"));
                     return (
                       <>
-                        <div
-                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
-                          style={{ height: `${fill}%` }}
-                        />
+                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
                         <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
                           <div className="narrative-liquid-wave h-4 w-full" />
                         </div>
@@ -2483,10 +2480,7 @@ export default async function Home() {
                     const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"));
                     return (
                       <>
-                        <div
-                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
-                          style={{ height: `${fill}%` }}
-                        />
+                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
                         <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
                           <div className="narrative-liquid-wave h-4 w-full" />
                         </div>
@@ -2505,10 +2499,7 @@ export default async function Home() {
                     const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"));
                     return (
                       <>
-                        <div
-                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
-                          style={{ height: `${fill}%` }}
-                        />
+                        <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
                         <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
                           <div className="narrative-liquid-wave h-4 w-full" />
                         </div>

@@ -118,7 +118,7 @@ export default function HypeGauge({ score }: Props) {
         })}
         {ticks.map((t) => {
           const a = Math.PI * (1 - t / 100);
-          const outer = polar(cx, cy, rTrack + strokeW / 2 + 9, a);
+          const outer = polar(cx, cy, rTrack + strokeW / 2 + 11, a);
           return (
             <text
               key={t}
@@ -127,7 +127,7 @@ export default function HypeGauge({ score }: Props) {
               textAnchor="middle"
               dominantBaseline="middle"
               className="fill-slate-500"
-              style={{ fontSize: 9, fontWeight: 600 }}
+              style={{ fontSize: 11, fontWeight: 700 }}
             >
               {t}
             </text>
@@ -144,7 +144,7 @@ export default function HypeGauge({ score }: Props) {
         />
         <circle cx={cx} cy={cy} r={5} fill="#0f172a" stroke="#e2e8f0" strokeWidth={1.5} />
       </svg>
-      <p className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+      <p className="mt-2 text-center text-[13px] font-bold uppercase tracking-[0.2em] text-slate-300">
         {ZONES[zoneIndex(s)].label}
       </p>
     </div>
