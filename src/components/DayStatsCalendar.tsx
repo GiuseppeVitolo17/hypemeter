@@ -320,14 +320,14 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                   onClick={() => {
                     setSelectedDate(key);
                   }}
-                  className={`flex h-full min-h-[2.6rem] flex-col items-center justify-center rounded-md px-0.5 py-1 text-[10px] transition hover:brightness-110 sm:min-h-[3rem] ${heatmapClasses(score, selected)} ${
+                  className={`flex h-full min-h-[2.9rem] flex-col items-center justify-center rounded-md px-0.5 py-1.5 text-[11px] transition hover:brightness-110 sm:min-h-[3.3rem] ${heatmapClasses(score, selected)} ${
                     !inMonth || outOfRange ? "cursor-not-allowed opacity-30 hover:brightness-100" : ""
                   }`}
                 >
-                  <span className={`leading-none ${selected ? "font-bold" : "font-semibold"}`}>
+                  <span className={`text-[14px] leading-tight tabular-nums ${selected ? "font-bold" : "font-semibold"}`}>
                     {date.getDate()}
                   </span>
-                  <span className="mt-0.5 font-mono text-[9px] leading-none tabular-nums opacity-95">
+                  <span className="mt-1 font-mono text-[11px] leading-tight tabular-nums opacity-95">
                     {outOfRange || !inMonth ? "" : score === undefined ? "·" : score}
                   </span>
                 </button>
