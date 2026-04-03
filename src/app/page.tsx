@@ -2574,7 +2574,7 @@ export default async function Home() {
                   </div>
                 </div>
               </div>
-              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 xl:h-full xl:max-w-[17rem] xl:justify-self-end">
+              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 xl:h-full">
                 <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
                 </p>
