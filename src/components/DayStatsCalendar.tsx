@@ -276,8 +276,8 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_1.4fr]">
-        <div className="rounded-2xl border border-white/10 bg-slate-950 p-4">
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.25fr_1.35fr]">
+        <div className="flex h-full flex-col rounded-2xl border border-white/10 bg-slate-950 p-4">
           <div className="mb-3 flex items-center justify-between">
             <button
               type="button"
@@ -305,7 +305,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
               <div key={name}>{name}</div>
             ))}
           </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
+          <div className="mt-1 grid flex-1 auto-rows-fr grid-cols-7 gap-1">
             {daysGrid.map((date) => {
               const key = isoDate(date);
               const inMonth = date.getMonth() === visibleMonth.getMonth();
@@ -320,7 +320,7 @@ export default function DayStatsCalendar({ initialData, initialDate }: Props) {
                   onClick={() => {
                     setSelectedDate(key);
                   }}
-                  className={`flex min-h-[2.6rem] flex-col items-center justify-center rounded-md px-0.5 py-1 text-[10px] transition hover:brightness-110 ${heatmapClasses(score, selected)} ${
+                  className={`flex h-full min-h-[2.6rem] flex-col items-center justify-center rounded-md px-0.5 py-1 text-[10px] transition hover:brightness-110 sm:min-h-[3rem] ${heatmapClasses(score, selected)} ${
                     !inMonth || outOfRange ? "cursor-not-allowed opacity-30 hover:brightness-100" : ""
                   }`}
                 >

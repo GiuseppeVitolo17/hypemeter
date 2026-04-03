@@ -2582,12 +2582,12 @@ export default async function Home() {
                 <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
                 </p>
-                <div className="mt-2 flex min-h-0 max-h-24 flex-1 flex-wrap content-start gap-1.5 overflow-y-auto overflow-x-hidden pr-1 sm:max-h-28 lg:max-h-none">
+                <div className="mt-2 flex min-h-0 max-h-36 flex-1 flex-col gap-1.5 overflow-y-auto overflow-x-hidden pr-1 lg:max-h-none">
                   {liveEventSignals.length > 0 ? (
                     liveEventSignals.slice(0, LIVE_EVENT_SIGNALS_UI_MAX).map((signal) => (
                       <span
                         key={`${signal.group}-${signal.label}`}
-                        className="rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
+                        className="w-fit max-w-full rounded-full border border-fuchsia-400/35 bg-fuchsia-500/10 px-2 py-0.5 text-[11px] text-fuchsia-200"
                         title={`Weight ${signal.weight.toFixed(1)} • ${signal.group}`}
                       >
                         {signal.label}
