@@ -100,11 +100,35 @@ body {
   }
 }
 
+.narrative-liquid-wave {
+  border-radius: 9999px;
+  background:
+    radial-gradient(28px 12px at 8% 65%, rgba(34, 211, 238, 0.65), rgba(34, 211, 238, 0) 72%),
+    radial-gradient(34px 14px at 24% 35%, rgba(168, 85, 247, 0.58), rgba(168, 85, 247, 0) 74%),
+    radial-gradient(30px 12px at 40% 68%, rgba(217, 70, 239, 0.58), rgba(217, 70, 239, 0) 72%),
+    radial-gradient(34px 14px at 58% 32%, rgba(34, 211, 238, 0.62), rgba(34, 211, 238, 0) 74%),
+    radial-gradient(28px 12px at 76% 66%, rgba(168, 85, 247, 0.56), rgba(168, 85, 247, 0) 72%),
+    radial-gradient(30px 12px at 92% 38%, rgba(34, 211, 238, 0.62), rgba(34, 211, 238, 0) 72%);
+  opacity: 0.88;
+  filter: blur(0.4px);
+  animation: liquid-wave-shift 5.5s linear infinite;
+}
+
+@keyframes liquid-wave-shift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-52%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reveal-item,
   .reveal-item.is-visible,
   .hover-lift,
-  .ambient-orb {
+  .ambient-orb,
+  .narrative-liquid-wave {
     animation: none !important;
     transition: none !important;
     transform: none !important;

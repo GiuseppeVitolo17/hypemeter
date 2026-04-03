@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 type Props = {
   score: number;
 };
@@ -33,7 +37,37 @@ function zoneIndex(score: number) {
  * Semicircular hype gauge (Fear-&-Greed style): zones + needle, compact for the Current Hype row.
  */
 export default function HypeGauge({ score }: Props) {
-  const s = Math.max(0, Math.min(100, score));
+  const target = Math.max(0, Math.min(100, score));
+  const [animatedScore, setAnimatedScore] = useState(0);
+
+  useEffect(() => {
+    const media = typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+    if (media?.matches) {
+      setAnimatedScore(target);
+      return;
+    }
+
+    const durationMs = 1100;
+    const start = performance.now();
+    let rafId = 0;
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(1, elapsed / durationMs);
+      // Ease-out cubic for a smooth settle near the final value.
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setAnimatedScore(target * eased);
+      if (progress < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
+    setAnimatedScore(0);
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [target]);
+
+  const s = Math.max(0, Math.min(100, animatedScore));
   const cx = 100;
   const cy = 100;
   const rTrack = 82;

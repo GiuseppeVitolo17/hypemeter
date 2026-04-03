@@ -1601,6 +1601,16 @@ function narrativeIndicatorLevel(tag: string, kind: "momentum" | "breadth" | "co
   return 50;
 }
 
+function narrativeCardLabel(tag: string, kind: "momentum" | "breadth" | "conviction"): string {
+  const t = tag.toLowerCase();
+  if (kind === "conviction") {
+    if (t.includes("high")) return "Strong";
+    if (t.includes("medium")) return "Balanced";
+    if (t.includes("low")) return "Weak";
+  }
+  return tag;
+}
+
 // Build the displayed 2005->today timeline and blend latest point with live score.
 function buildBacktrackSeries(liveScore: number): YearScore[] {
   const currentYear = new Date().getFullYear();
@@ -2499,46 +2509,76 @@ export default async function Home() {
                 style={{ width: `${score}%` }}
               />
             </div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.8fr)] lg:items-stretch">
+            <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(15.5rem,0.72fr)] xl:items-stretch">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
-                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"))}%` }}
-                  />
+                  {(() => {
+                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"));
+                    return (
+                      <>
+                        <div
+                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
+                          style={{ height: `${fill}%` }}
+                        />
+                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
+                          <div className="narrative-liquid-wave h-4 w-[210%]" />
+                        </div>
+                      </>
+                    );
+                  })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Momentum</p>
-                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
-                      {traderNarrative.momentumTag}
+                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
+                      {narrativeCardLabel(traderNarrative.momentumTag, "momentum")}
                     </p>
                   </div>
                 </div>
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
-                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"))}%` }}
-                  />
+                  {(() => {
+                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"));
+                    return (
+                      <>
+                        <div
+                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
+                          style={{ height: `${fill}%` }}
+                        />
+                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
+                          <div className="narrative-liquid-wave h-4 w-[210%]" />
+                        </div>
+                      </>
+                    );
+                  })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Breadth</p>
-                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
-                      {traderNarrative.breadthTag}
+                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
+                      {narrativeCardLabel(traderNarrative.breadthTag, "breadth")}
                     </p>
                   </div>
                 </div>
                 <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
-                  <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-300/95 via-fuchsia-500/90 to-violet-500/70 mix-blend-screen"
-                    style={{ height: `${Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"))}%` }}
-                  />
+                  {(() => {
+                    const fill = Math.max(38, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"));
+                    return (
+                      <>
+                        <div
+                          className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/78 via-fuchsia-500/72 to-violet-500/40"
+                          style={{ height: `${fill}%` }}
+                        />
+                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
+                          <div className="narrative-liquid-wave h-4 w-[210%]" />
+                        </div>
+                      </>
+                    );
+                  })()}
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
                     <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Conviction</p>
-                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
-                      {traderNarrative.convictionTag}
+                    <p className="pr-1 text-base font-bold leading-tight text-cyan-200 sm:text-lg">
+                      {narrativeCardLabel(traderNarrative.convictionTag, "conviction")}
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 lg:h-full lg:max-w-[22rem] lg:justify-self-end">
+              <div className="flex min-h-0 min-w-0 flex-col rounded-xl border border-white/10 bg-slate-800/80 p-3 xl:h-full xl:max-w-[20rem] xl:justify-self-end">
                 <p className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   Live Event Signals
                 </p>
