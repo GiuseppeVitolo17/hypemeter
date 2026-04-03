@@ -2508,9 +2508,6 @@ export default async function Home() {
                     return (
                       <>
                         <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
-                          <div className="narrative-liquid-wave h-4 w-full" />
-                        </div>
                       </>
                     );
                   })()}
@@ -2527,9 +2524,6 @@ export default async function Home() {
                     return (
                       <>
                         <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
-                          <div className="narrative-liquid-wave h-4 w-full" />
-                        </div>
                       </>
                     );
                   })()}
@@ -2546,9 +2540,6 @@ export default async function Home() {
                     return (
                       <>
                         <div className="narrative-fill-body pointer-events-none absolute inset-x-0 bottom-0" style={{ height: `${fill}%` }} />
-                        <div className="pointer-events-none absolute inset-x-0" style={{ bottom: `calc(${fill}% - 0.6rem)` }}>
-                          <div className="narrative-liquid-wave h-4 w-full" />
-                        </div>
                       </>
                     );
                   })()}

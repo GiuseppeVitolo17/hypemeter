@@ -100,24 +100,12 @@ body {
   }
 }
 
-.narrative-liquid-wave {
-  border-radius: 9999px;
-  opacity: 0.92;
-  background-repeat: repeat-x, repeat-x;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='16' viewBox='0 0 120 16'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.62' d='M0 10 C10 2 30 2 40 10 C50 18 70 18 80 10 C90 2 110 2 120 10 L120 16 L0 16 Z'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='16' viewBox='0 0 160 16'%3E%3Cpath fill='%23c026d3' fill-opacity='0.42' d='M0 9 C12 1 28 1 40 9 C52 17 68 17 80 9 C92 1 108 1 120 9 C132 17 148 17 160 9 L160 16 L0 16 Z'/%3E%3C/svg%3E");
-  background-size:
-    120px 16px,
-    160px 16px;
-  background-blend-mode: screen;
-  filter: saturate(0.95);
-  animation: liquid-wave-seamless 6s linear infinite;
-}
-
 /* Animate the entire fill body so wave and liquid move as one system. */
 .narrative-fill-body {
   background-image:
+    /* Moving wave texture across the full fill area (not only the top edge). */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='28' viewBox='0 0 120 28'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.22' d='M0 8 C10 0 30 0 40 8 C50 16 70 16 80 8 C90 0 110 0 120 8 L120 14 C110 22 90 22 80 14 C70 6 50 6 40 14 C30 22 10 22 0 14 Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='30' viewBox='0 0 160 30'%3E%3Cpath fill='%23c026d3' fill-opacity='0.18' d='M0 9 C12 1 28 1 40 9 C52 17 68 17 80 9 C92 1 108 1 120 9 C132 17 148 17 160 9 L160 16 C148 24 132 24 120 16 C108 8 92 8 80 16 C68 24 52 24 40 16 C28 8 12 8 0 16 Z'/%3E%3C/svg%3E"),
     linear-gradient(
       180deg,
       rgba(56, 189, 248, 0.58) 0%,
@@ -127,12 +115,44 @@ body {
     ),
     radial-gradient(120% 58% at 50% 100%, rgba(34, 211, 238, 0.26) 0%, rgba(34, 211, 238, 0) 70%);
   background-size:
+    120px 28px,
+    160px 30px,
     180% 180%,
     140% 100%;
+  background-repeat:
+    repeat,
+    repeat,
+    no-repeat,
+    no-repeat;
+  background-blend-mode: screen, screen, normal, normal;
   background-position:
+    0 0,
+    0 0,
     0% 0%,
     50% 100%;
-  animation: narrative-fill-flow 8.5s ease-in-out infinite;
+  animation: narrative-fill-flow 8.5s ease-in-out infinite, narrative-wave-drift 6s linear infinite;
+}
+
+.narrative-fill-body::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 14px;
+  background-repeat: repeat-x, repeat-x;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='14' viewBox='0 0 96 14'%3E%3Cpath fill='%2322d3ee' fill-opacity='0.7' d='M0 9 C8 2 24 2 32 9 C40 16 56 16 64 9 C72 2 88 2 96 9 L96 14 L0 14 Z'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='132' height='14' viewBox='0 0 132 14'%3E%3Cpath fill='%23c026d3' fill-opacity='0.48' d='M0 8 C10 1 23 1 33 8 C43 15 56 15 66 8 C76 1 89 1 99 8 C109 15 122 15 132 8 L132 14 L0 14 Z'/%3E%3C/svg%3E");
+  background-size:
+    96px 14px,
+    132px 14px;
+  background-position:
+    0 0,
+    0 0;
+  filter: saturate(1.05);
+  animation: narrative-crest-wave 5.2s linear infinite;
+  pointer-events: none;
 }
 
 @keyframes narrative-fill-flow {
@@ -153,7 +173,24 @@ body {
   }
 }
 
-@keyframes liquid-wave-seamless {
+@keyframes narrative-wave-drift {
+  0% {
+    background-position:
+      0 0,
+      0 0,
+      0% 0%,
+      50% 100%;
+  }
+  100% {
+    background-position:
+      -120px 0,
+      -160px 0,
+      0% 0%,
+      50% 100%;
+  }
+}
+
+@keyframes narrative-crest-wave {
   0% {
     background-position:
       0 0,
@@ -161,8 +198,8 @@ body {
   }
   100% {
     background-position:
-      -120px 0,
-      -160px 0;
+      -96px 0,
+      -132px 0;
   }
 }
 
@@ -171,12 +208,16 @@ body {
   .reveal-item.is-visible,
   .hover-lift,
   .ambient-orb,
-  .narrative-liquid-wave,
   .narrative-fill-body {
     animation: none !important;
     transition: none !important;
     transform: none !important;
     filter: none !important;
     opacity: 1 !important;
+  }
+
+  .narrative-fill-body::before {
+    animation: none !important;
+    filter: none !important;
   }
 }
