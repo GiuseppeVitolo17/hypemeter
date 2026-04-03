@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import profilePhoto from "../../../106628254.jpeg";
 
 export const metadata: Metadata = {
   title: "About",
   description:
-    "About Monmeter: how the Pokemon hype score is built, where data comes from, and how caching/updates work.",
+    "About Monmeter: visual story, Pokemon gallery, creator profile, and how the hype engine works.",
   alternates: {
     canonical: "/about",
   },
@@ -24,20 +25,89 @@ function SectionList({ title, items }: { title: string; items: string[] }) {
 }
 
 export default function AboutPage() {
+  const pokemonGallery = [
+    {
+      name: "Pikachu",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
+    },
+    {
+      name: "Charizard",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png",
+    },
+    {
+      name: "Gengar",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/94.png",
+    },
+    {
+      name: "Mewtwo",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/150.png",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-10 text-slate-100 md:px-8">
       <div className="mx-auto w-full max-w-5xl">
-        <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
-          <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">MONMETER</p>
-          <p className="mt-2 text-xs text-slate-400">Pokemon Fear &amp; Greed Remix</p>
-          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Sections</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            {["Live Hype", "Market Sidecar", "Backtracking", "Daily Stats", "About"].map((item) => (
-              <span key={item} className="rounded-full border border-white/10 bg-slate-800 px-2.5 py-1 text-slate-200">
-                {item}
-              </span>
-            ))}
-          </div>
+        <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
+          <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
+            <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">MONMETER</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Pokemon Hype, made readable.</h1>
+            <p className="mt-3 text-sm leading-7 text-slate-200">
+              Monmeter tracks daily Pokemon momentum with a signal mix built from news activity, social/search pulse,
+              and market context. Fast refreshes, clear score components, and visible source logic.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2 text-xs">
+              {["Live Hype", "Market Sidecar", "Backtracking", "Daily Stats", "About"].map((item) => (
+                <span key={item} className="rounded-full border border-white/10 bg-slate-800 px-2.5 py-1 text-slate-200">
+                  {item}
+                </span>
+              ))}
+            </div>
+            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {pokemonGallery.map((pokemon) => (
+                <div
+                  key={pokemon.name}
+                  className="rounded-2xl border border-white/10 bg-slate-800/70 p-2 text-center"
+                >
+                  <img
+                    src={pokemon.image}
+                    alt={pokemon.name}
+                    loading="lazy"
+                    className="mx-auto h-20 w-20 object-contain sm:h-24 sm:w-24"
+                  />
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                    {pokemon.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Creator</p>
+            <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+              <img
+                src={profilePhoto.src}
+                alt="Giuseppe Vitolo"
+                className="h-40 w-full rounded-xl object-cover"
+              />
+              <p className="mt-3 text-base font-bold">Giuseppe Vitolo</p>
+              <p className="text-xs text-slate-400">@gvitolocs</p>
+            </div>
+            <div className="mt-4 space-y-2 text-sm">
+              <a
+                className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
+                href="https://www.linkedin.com/in/gvitolocs/"
+              >
+                LinkedIn
+              </a>
+              <a
+                className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
+                href="https://x.com/gvitolocs"
+              >
+                X / Twitter
+              </a>
+            </div>
+          </section>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -51,31 +121,25 @@ export default function AboutPage() {
         </div>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-          <h1 className="text-2xl font-black tracking-tight md:text-3xl">About Monmeter</h1>
-          <p className="mt-4 text-sm leading-7 text-slate-200">
-            Monmeter is a live dashboard that tracks Pokemon hype using a blended score built from news activity,
-            social/search momentum, and market context. The goal is to make the daily sentiment around Pokemon easier
-            to read at a glance while keeping the underlying signals transparent.
-          </p>
+          <h2 className="text-xl font-black tracking-tight md:text-2xl">How the score works</h2>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            The score is updated from a server-side cached pipeline and is complemented by detailed components,
-            historical backtracking, day-level calendar stats, and direct source links for verification.
+            The main hype score is a weighted blend. Each component updates independently with fallback logic to avoid
+            empty states when an upstream source is slow.
           </p>
-
-          <h2 className="mt-7 text-lg font-bold">Contact:</h2>
-          <p className="mt-2 text-sm text-slate-200">Giuseppe Vitolo (gvitolocs)</p>
-          <p className="mt-2 text-sm text-slate-200">
-            LinkedIn:{" "}
-            <a className="text-cyan-300 hover:underline" href="https://www.linkedin.com/in/gvitolocs/">
-              https://www.linkedin.com/in/gvitolocs/
-            </a>
-          </p>
-          <p className="mt-1 text-sm text-slate-200">
-            X:{" "}
-            <a className="text-cyan-300 hover:underline" href="https://x.com/gvitolocs">
-              https://x.com/gvitolocs
-            </a>
-          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-fuchsia-300">Input</p>
+              <p className="mt-1 text-sm text-slate-200">News, social pulse, search deltas, and market snapshots.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-fuchsia-300">Engine</p>
+              <p className="mt-1 text-sm text-slate-200">Normalized signals, bounded scoring, anti-flat adjustments.</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-3">
+              <p className="text-xs uppercase tracking-[0.12em] text-fuchsia-300">Output</p>
+              <p className="mt-1 text-sm text-slate-200">Gauge, component cards, historical backtracking, daily stats.</p>
+            </div>
+          </div>
         </section>
 
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
