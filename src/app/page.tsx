@@ -2501,34 +2501,40 @@ export default async function Home() {
             </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-2 lg:items-stretch">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem]">
+                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-500/25 via-fuchsia-500/20 to-transparent"
-                    style={{ height: `${Math.max(18, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
+                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.momentumTag, "momentum"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Momentum</p>
-                    <p className="text-xl font-semibold leading-tight text-cyan-300">{traderNarrative.momentumTag}</p>
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Momentum</p>
+                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
+                      {traderNarrative.momentumTag}
+                    </p>
                   </div>
                 </div>
-                <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem]">
+                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-500/25 via-fuchsia-500/20 to-transparent"
-                    style={{ height: `${Math.max(18, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
+                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.breadthTag, "breadth"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Breadth</p>
-                    <p className="text-xl font-semibold leading-tight text-cyan-300">{traderNarrative.breadthTag}</p>
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Breadth</p>
+                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
+                      {traderNarrative.breadthTag}
+                    </p>
                   </div>
                 </div>
-                <div className="relative overflow-hidden rounded-lg border border-white/10 bg-slate-800 px-3 py-3 sm:min-h-[5.5rem]">
+                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-slate-800/95 px-3 py-3 sm:min-h-[5.5rem]">
                   <div
-                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-500/25 via-fuchsia-500/20 to-transparent"
-                    style={{ height: `${Math.max(18, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"))}%` }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-cyan-400/60 via-fuchsia-500/55 to-transparent"
+                    style={{ height: `${Math.max(24, narrativeIndicatorLevel(traderNarrative.convictionTag, "conviction"))}%` }}
                   />
                   <div className="relative z-10 flex h-full flex-col justify-between gap-1">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Conviction</p>
-                    <p className="text-xl font-semibold leading-tight text-cyan-300">{traderNarrative.convictionTag}</p>
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-300">Conviction</p>
+                    <p className="break-words pr-1 text-lg font-bold leading-tight text-cyan-200 sm:text-xl">
+                      {traderNarrative.convictionTag}
+                    </p>
                   </div>
                 </div>
               </div>

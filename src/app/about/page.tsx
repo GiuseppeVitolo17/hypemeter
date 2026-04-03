@@ -27,20 +27,20 @@ function SectionList({ title, items }: { title: string; items: string[] }) {
 export default function AboutPage() {
   const pokemonGallery = [
     {
+      name: "Flareon",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/136.png",
+    },
+    {
+      name: "Eevee",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png",
+    },
+    {
+      name: "Espeon",
+      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/196.png",
+    },
+    {
       name: "Pikachu",
       image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png",
-    },
-    {
-      name: "Charizard",
-      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/6.png",
-    },
-    {
-      name: "Gengar",
-      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/94.png",
-    },
-    {
-      name: "Mewtwo",
-      image: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/150.png",
     },
   ];
 
@@ -85,13 +85,22 @@ export default function AboutPage() {
           <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Creator</p>
             <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-slate-800/70 p-3">
-              <img
-                src={profilePhoto.src}
-                alt="Giuseppe Vitolo"
-                className="h-40 w-full rounded-xl object-cover"
-              />
+              <a
+                href={profilePhoto.src}
+                target="_blank"
+                rel="noreferrer"
+                className="mx-auto block w-fit rounded-xl border border-white/10 bg-slate-700/40 p-1 transition hover:border-cyan-300/60"
+                title="Open full image"
+              >
+                <img
+                  src={profilePhoto.src}
+                  alt="Giuseppe Vitolo"
+                  className="h-28 w-28 rounded-lg object-contain sm:h-32 sm:w-32"
+                />
+              </a>
               <p className="mt-3 text-base font-bold">Giuseppe Vitolo</p>
               <p className="text-xs text-slate-400">@gvitolocs</p>
+              <p className="mt-1 text-[11px] text-slate-500">Click photo to open full quality.</p>
             </div>
             <div className="mt-4 space-y-2 text-sm">
               <a
@@ -105,6 +114,12 @@ export default function AboutPage() {
                 href="https://x.com/gvitolocs"
               >
                 X / Twitter
+              </a>
+              <a
+                className="block rounded-xl border border-white/10 bg-slate-800/80 px-3 py-2 text-cyan-300 hover:bg-slate-700/80"
+                href="https://github.com/gvitolocs"
+              >
+                GitHub
               </a>
             </div>
           </section>
