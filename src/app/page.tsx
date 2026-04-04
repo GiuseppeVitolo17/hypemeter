@@ -36,6 +36,12 @@ type NewsItem = {
   summary: string;
 };
 
+type NewsCachePayload = {
+  items: NewsItem[];
+  fetchedAtMs: number;
+  source: "live" | "cache" | "last-good" | "hard-fallback";
+};
+
 type LiveEventSignal = {
   label: string;
   group: string;
@@ -162,6 +168,8 @@ const HOME_COMMUNITY_SENTIMENT_CACHE_KEY = "home_community_sentiment_v1";
 const HOME_SOCIAL_TRAFFIC_CACHE_KEY = "home_social_traffic_v1";
 const HOME_NEWS_ITEMS_CACHE_KEY = "home_news_items_v1";
 const HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY = "home_news_items_last_good_v1";
+const HOME_NEWS_ITEMS_CACHE_KEY_V2 = "home_news_items_v2";
+const HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2 = "home_news_items_last_good_v2";
 const HOME_LIVE_EVENT_SIGNALS_CACHE_KEY = "home_live_event_signals_v1";
 const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
 const MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY = "market_snapshot_last_good_v1";
@@ -233,6 +241,63 @@ const NEWS_ITEMS_HARD_FALLBACK: NewsItem[] = [
     summary: "Nintendo official updates fallback entry.",
   },
 ];
+
+function isValidNewsItem(row: unknown): row is NewsItem {
+  if (!row || typeof row !== "object") return false;
+  const item = row as Partial<NewsItem>;
+  return (
+    typeof item.title === "string" &&
+    item.title.trim().length > 0 &&
+    typeof item.link === "string" &&
+    /^https?:\/\//i.test(item.link) &&
+    typeof item.pubDate === "string" &&
+    item.pubDate.trim().length > 0 &&
+    typeof item.source === "string" &&
+    item.source.trim().length > 0 &&
+    typeof item.summary === "string"
+  );
+}
+
+function sanitizeNewsItems(items: NewsItem[], limit = 28): NewsItem[] {
+  const deduped = new Map<string, NewsItem>();
+  for (const row of items) {
+    if (!isValidNewsItem(row)) continue;
+    const key = `${normalize(row.title)}|${normalize(row.source)}|${row.link}`;
+    if (!deduped.has(key)) deduped.set(key, row);
+  }
+  return Array.from(deduped.values()).slice(0, limit);
+}
+
+function hardFallbackTitlesSet() {
+  return new Set(NEWS_ITEMS_HARD_FALLBACK.map((item) => normalize(item.title)));
+}
+
+function isMeaningfulNewsItems(items: NewsItem[]): boolean {
+  const rows = sanitizeNewsItems(items, 28);
+  if (rows.length < 3) return false;
+  const fallbackTitles = hardFallbackTitlesSet();
+  const nonFallbackCount = rows.filter((item) => !fallbackTitles.has(normalize(item.title))).length;
+  return nonFallbackCount >= 2;
+}
+
+function asNewsCachePayload(value: unknown): NewsCachePayload | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<NewsCachePayload>;
+  if (!Array.isArray(row.items)) return null;
+  const items = sanitizeNewsItems(row.items as NewsItem[], 28);
+  if (items.length === 0) return null;
+  const source = row.source;
+  const fetchedAtMs = typeof row.fetchedAtMs === "number" ? row.fetchedAtMs : Date.now();
+  if (
+    source !== "live" &&
+    source !== "cache" &&
+    source !== "last-good" &&
+    source !== "hard-fallback"
+  ) {
+    return null;
+  }
+  return { items, fetchedAtMs, source };
+}
 
 const HARD_FALLBACK_EVENT_SIGNALS: LiveEventSignal[] = [
   { label: "Search trend active", group: "fallback", weight: 1.6 },
@@ -2126,15 +2191,37 @@ function buildTodayCalendarStats(
 async function loadHomePageDataUncached() {
   const homeWallStart = performance.now();
   // Defensive defaults keep the page renderable even on upstream failures.
-  const cachedNewsItems = readRuntimeSnapshotFromDb<NewsItem[]>(HOME_NEWS_ITEMS_CACHE_KEY);
-  const lastGoodNewsItems = readRuntimeSnapshotFromDb<NewsItem[]>(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY);
+  const cachedNewsV2 = asNewsCachePayload(
+    readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
+  );
+  const lastGoodNewsV2 = asNewsCachePayload(
+    readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2),
+  );
+  const cachedNewsLegacyRaw = readRuntimeSnapshotFromDb<NewsItem[]>(HOME_NEWS_ITEMS_CACHE_KEY);
+  const lastGoodNewsLegacyRaw = readRuntimeSnapshotFromDb<NewsItem[]>(
+    HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY,
+  );
+  const cachedNewsItems = sanitizeNewsItems(
+    cachedNewsV2?.items ?? cachedNewsLegacyRaw ?? [],
+    28,
+  );
+  const lastGoodNewsItems = sanitizeNewsItems(
+    lastGoodNewsV2?.items ?? lastGoodNewsLegacyRaw ?? [],
+    28,
+  );
   const cachedLiveEventSignalsRaw = readRuntimeSnapshotFromDb<LiveEventSignal[]>(
     HOME_LIVE_EVENT_SIGNALS_CACHE_KEY,
   );
   const cachedLiveEventSignals = isLiveEventSignalArray(cachedLiveEventSignalsRaw)
     ? cachedLiveEventSignalsRaw
     : null;
-  let items: NewsItem[] = cachedNewsItems ?? lastGoodNewsItems ?? NEWS_ITEMS_HARD_FALLBACK;
+  const hardFallbackItems = sanitizeNewsItems(NEWS_ITEMS_HARD_FALLBACK, 28);
+  let items: NewsItem[] =
+    cachedNewsItems.length > 0
+      ? cachedNewsItems
+      : lastGoodNewsItems.length > 0
+        ? lastGoodNewsItems
+        : hardFallbackItems;
   let searchStats: SearchInterestStats = { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
   let socialTraffic: SocialTrafficSnapshot = lastSocialTrafficSnapshot ?? {
     "google-search": { current: 0, previous: 0 },
@@ -2173,25 +2260,60 @@ async function loadHomePageDataUncached() {
         const curated = curateNewsItems(parsed);
         // Fallback to lightly-filtered parsed feed if strict curation returns empty.
         const fallback = parsed.filter((item) => /(pokemon|pokémon)/i.test(item.title));
-        const selected = (curated.length > 0 ? curated : fallback).slice(0, 28);
+        const selected = sanitizeNewsItems(curated.length > 0 ? curated : fallback, 28);
         if (selected.length > 0) {
+          const payload: NewsCachePayload = {
+            items: selected,
+            fetchedAtMs: Date.now(),
+            source: "live",
+          };
           upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY, selected);
-          upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, selected);
+          upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY_V2, payload);
+          if (isMeaningfulNewsItems(selected)) {
+            upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, selected);
+            upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2, payload);
+          }
           return selected;
         }
       }
-      return cachedNewsItems ?? lastGoodNewsItems ?? NEWS_ITEMS_HARD_FALLBACK;
+      return cachedNewsItems.length > 0
+        ? cachedNewsItems
+        : lastGoodNewsItems.length > 0
+          ? lastGoodNewsItems
+          : hardFallbackItems;
     }),
     HOME_TIMEOUT_NEWS_MS,
-    () => cachedNewsItems ?? lastGoodNewsItems ?? NEWS_ITEMS_HARD_FALLBACK,
+    () =>
+      cachedNewsItems.length > 0
+        ? cachedNewsItems
+        : lastGoodNewsItems.length > 0
+          ? lastGoodNewsItems
+          : hardFallbackItems,
   );
+  items = sanitizeNewsItems(items, 28);
   if (items.length > 0) {
     upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY, items);
-    upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, items);
+    upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY_V2, {
+      items,
+      fetchedAtMs: Date.now(),
+      source: cachedNewsItems.length > 0 ? "cache" : lastGoodNewsItems.length > 0 ? "last-good" : "hard-fallback",
+    } as NewsCachePayload);
+    if (isMeaningfulNewsItems(items)) {
+      upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, items);
+      upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2, {
+        items,
+        fetchedAtMs: Date.now(),
+        source: "last-good",
+      } as NewsCachePayload);
+    }
   } else {
-    items = NEWS_ITEMS_HARD_FALLBACK;
+    items = hardFallbackItems;
     upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY, items);
-    upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, items);
+    upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY_V2, {
+      items,
+      fetchedAtMs: Date.now(),
+      source: "hard-fallback",
+    } as NewsCachePayload);
   }
 
   const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
