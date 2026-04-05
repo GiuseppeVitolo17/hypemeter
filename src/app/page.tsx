@@ -10,7 +10,7 @@ import { fetchMarketYearlyOverlay, type MarketYearlyOverlay } from "@/lib/market
 import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
-import { HOME_PAGE_DATA_CACHE_TTL_SEC, HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
+import { HOME_PAGE_DATA_CACHE_TTL_SEC } from "@/lib/homePageCacheConfig";
 import {
   fetchPokemonByIdentifier,
   fetchPokemonNameCatalog,
@@ -2634,11 +2634,6 @@ async function loadHomePageDataUncached() {
   };
 }
 
-const loadHomePageDataCached = unstable_cache(loadHomePageDataUncached, ["hypemeter-home-v1"], {
-  revalidate: HOME_PAGE_DATA_CACHE_TTL_SEC,
-  tags: [HYPEMETER_CACHE_TAG_HOME],
-});
-
 type HomePagePayload = Awaited<ReturnType<typeof loadHomePageDataUncached>>;
 
 type HomePageRuntimeSnapshot = {
@@ -2672,6 +2667,235 @@ function scheduleHomePageRefresh() {
   })();
 }
 
+function buildInstantHomePagePayload(): HomePagePayload {
+  const cachedNewsV2 = asNewsCachePayload(
+    readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
+  );
+  const lastGoodNewsV2 = asNewsCachePayload(
+    readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2),
+  );
+  const cachedNewsLegacyRaw = readRuntimeSnapshotFromDb<NewsItem[]>(HOME_NEWS_ITEMS_CACHE_KEY);
+  const lastGoodNewsLegacyRaw = readRuntimeSnapshotFromDb<NewsItem[]>(
+    HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY,
+  );
+  const hardFallbackItems = sanitizeNewsItems(NEWS_ITEMS_HARD_FALLBACK, 28);
+  const items = sanitizeNewsItems(
+    cachedNewsV2?.items ??
+      cachedNewsLegacyRaw ??
+      lastGoodNewsV2?.items ??
+      lastGoodNewsLegacyRaw ??
+      hardFallbackItems,
+    28,
+  );
+
+  const cachedSearchStats = readRuntimeSnapshotFromDb<SearchInterestStats>(HOME_SEARCH_STATS_CACHE_KEY);
+  const searchStats = cachedSearchStats ?? { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
+  const searchInterest = searchStats.score;
+
+  const socialTrafficCached = readRuntimeSnapshotFromDb<SocialTrafficSnapshot>(HOME_SOCIAL_TRAFFIC_CACHE_KEY);
+  const socialTraffic =
+    socialTrafficCached ??
+    lastSocialTrafficSnapshot ??
+    buildSocialFallbackFromItems(items, searchStats);
+  const socialPulse = computeSocialPulseStats(socialTraffic);
+
+  const cachedMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_CACHE_KEY);
+  const cachedMarket = cachedMarketRaw ? normalizeMarketSnapshot(cachedMarketRaw) : null;
+  const lastGoodMarketRaw = readRuntimeSnapshotFromDb<MarketSnapshot>(MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY);
+  const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
+  const market = cachedMarket ?? lastGoodMarket ?? MARKET_SNAPSHOT_HARD_FALLBACK;
+
+  const marketMomentumCached = readCachedMarketMomentumScore()?.score;
+  const marketMomentum = marketMomentumCached ?? scoreMarketMomentumFromMacroFallback(market);
+  const eventCatalyst = readRuntimeSnapshotFromDb<number>(HOME_EVENT_CATALYST_CACHE_KEY) ?? 40;
+  const communitySentiment = readRuntimeSnapshotFromDb<number>(HOME_COMMUNITY_SENTIMENT_CACHE_KEY) ?? 50;
+
+  const { score, indicators, communityScore, marketScore } = summarizeHype(items, {
+    searchInterest,
+    marketMomentum,
+    eventCatalyst,
+    communitySentiment,
+    socialPulse,
+    socialTraffic,
+  });
+  const cycle30 = buildThirtyYearCycle(new Date().getFullYear());
+  const sentiments = computeWindowSentiments({
+    score,
+    communityScore,
+    marketScore,
+    components: indicators,
+    cycle30,
+    socialPulseScore: socialPulse.aggregateScore,
+  });
+  const history = buildBacktrackSeries(score);
+  const overlayRuntimeKey = `overlay_years_${history.map((h) => h.year).join(",")}`;
+  const cachedOverlay = readRuntimeSnapshotFromDb<MarketYearlyOverlay>(overlayRuntimeKey);
+  const marketOverlay = cachedOverlay ?? buildOverlayFallbackFromHistory(history);
+
+  const cachedLiveEventSignalsRaw = readRuntimeSnapshotFromDb<LiveEventSignal[]>(
+    HOME_LIVE_EVENT_SIGNALS_CACHE_KEY,
+  );
+  const cachedLiveEventSignals = isLiveEventSignalArray(cachedLiveEventSignalsRaw)
+    ? cachedLiveEventSignalsRaw
+    : null;
+  const liveEventSignals = ensureLiveEventSignals(items, cachedLiveEventSignals);
+  const liveSignalQuality = computeLiveSignalQuality({
+    items,
+    eventSignalCount: liveEventSignals.length,
+    searchInterest,
+    components: indicators,
+    socialTraffic,
+  });
+  const todayCalendarStats = buildTodayCalendarStats(items.slice(0, 20), score, searchInterest, socialTraffic);
+
+  const topArticles = [...items]
+    .sort((a, b) => scoreArticleRelevance(b) - scoreArticleRelevance(a))
+    .slice(0, 10);
+
+  const socialMomentumBarPct = (deltaPct: number) => {
+    const x = Math.max(-95, Math.min(95, deltaPct));
+    const linear = 50 + x * 0.45;
+    return clampScore(Math.max(22, Math.min(94, linear)));
+  };
+  const platformGraphBase = [
+    {
+      key: "google-search",
+      label: "Google Search",
+      current: socialTraffic["google-search"].current,
+      previous: socialTraffic["google-search"].previous,
+    },
+    {
+      key: "reddit",
+      label: "Reddit",
+      current: socialTraffic.reddit.current,
+      previous: socialTraffic.reddit.previous,
+    },
+    {
+      key: "youtube",
+      label: "YouTube",
+      current: socialTraffic.youtube.current,
+      previous: socialTraffic.youtube.previous,
+    },
+    {
+      key: "facebook",
+      label: "Facebook",
+      current: socialTraffic.facebook.current,
+      previous: socialTraffic.facebook.previous,
+    },
+    {
+      key: "threads",
+      label: "Threads",
+      current: socialTraffic.threads.current,
+      previous: socialTraffic.threads.previous,
+    },
+    {
+      key: "pokemon-official",
+      label: "Pokemon Official",
+      current: socialTraffic["pokemon-official"].current,
+      previous: socialTraffic["pokemon-official"].previous,
+    },
+  ];
+  const platformGraph = platformGraphBase.map((platform) => {
+    const deltaPct = percentDelta(platform.current, platform.previous);
+    return {
+      ...platform,
+      deltaPct,
+      barPct: socialMomentumBarPct(deltaPct),
+    };
+  });
+
+  const pokemonDayKey = calendarDateIsoInTimeZone("Europe/Rome");
+  const pokemonBundle =
+    readPokemonDayBundleFromDb<{
+      pokemon: PokemonOfDay | null;
+      winnerSlug: string | null;
+      article: PokemonOfDayArticle | null;
+    }>(pokemonDayKey) ?? { pokemon: null, winnerSlug: null, article: null };
+  const pokemonOfDay = pokemonBundle.pokemon;
+  const pokemonOfDayWinnerSlug = pokemonBundle.winnerSlug;
+  const pokemonOfDayArticle = pokemonBundle.article;
+
+  const cardHighlightCached = readRuntimeSnapshotFromDb<CardHighlightData>(HOME_CARD_HIGHLIGHT_CACHE_KEY);
+  const cardHighlightLastGood = readRuntimeSnapshotFromDb<CardHighlightData>(
+    HOME_CARD_HIGHLIGHT_LAST_GOOD_CACHE_KEY,
+  );
+  const cardTraderBestSeller = isCardHighlightData(cardHighlightCached)
+    ? cardHighlightCached
+    : isCardHighlightData(cardHighlightLastGood)
+      ? cardHighlightLastGood
+      : null;
+
+  const traderNarrative = buildTraderNarrative({
+    score,
+    signalQuality: liveSignalQuality,
+    components: indicators,
+  });
+
+  const updatedAt = `${new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC",
+  }).format(new Date())} UTC`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: "Pokemon Hype Meter",
+    applicationCategory: "FinanceApplication",
+    operatingSystem: "Web",
+    url: "https://monmeter.vercel.app/",
+    description:
+      "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
+    publisher: {
+      "@type": "Organization",
+      name: "Pokemon Hype Meter",
+    },
+    featureList: [
+      "Pokemon TCG market momentum tracking",
+      "Search interest and sentiment monitoring",
+      "Availability pressure and catalyst scoring",
+      "Interactive historical hype chart",
+      "Daily event calendar with runtime stats",
+    ],
+    dateModified: new Date().toISOString(),
+  };
+
+  return {
+    cacheMeta: { computedAt: Date.now() },
+    items,
+    searchStats,
+    socialTraffic,
+    searchInterest,
+    marketMomentum,
+    eventCatalyst,
+    communitySentiment,
+    market,
+    score,
+    indicators,
+    communityScore,
+    marketScore,
+    sentiments,
+    cycle30,
+    history,
+    marketOverlay,
+    cardTraderBestSeller,
+    todayCalendarStats,
+    liveEventSignals,
+    liveSignalQuality,
+    topArticles,
+    platformGraph,
+    pokemonOfDay,
+    pokemonOfDayWinnerSlug,
+    pokemonOfDayArticle,
+    traderNarrative,
+    updatedAt,
+    structuredData,
+  };
+}
+
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
   if (snapshot) {
@@ -2681,12 +2905,8 @@ async function loadHomePageData() {
     return snapshot.payload;
   }
 
-  const seeded = await loadHomePageDataCached();
-  upsertRuntimeSnapshotToDb(HOME_PAGE_RUNTIME_SNAPSHOT_KEY, {
-    payload: seeded,
-    updatedAtMs: Date.now(),
-  } as HomePageRuntimeSnapshot);
-  return seeded;
+  scheduleHomePageRefresh();
+  return buildInstantHomePagePayload();
 }
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
