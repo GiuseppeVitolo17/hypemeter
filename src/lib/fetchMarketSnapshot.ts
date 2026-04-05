@@ -567,8 +567,44 @@ async function resolveNintendoMetrics(): Promise<{
   };
 }
 
+function snapshotHasAnyLiveQuote(s: MarketSnapshot): boolean {
+  return s.sp500 !== null || s.bitcoin !== null || s.nintendo !== null;
+}
+
+function buildSnapshotFromResolvedParts(
+  spResolved: {
+    sp500: number | null;
+    sp500GrowthPct: number | null;
+    sp500Source: Sp500QuoteSource | null;
+  },
+  btcResolved: {
+    bitcoin: number | null;
+    bitcoinGrowthPct: number | null;
+    bitcoinSource: BitcoinQuoteSource | null;
+  },
+  nintendoResolved: Awaited<ReturnType<typeof resolveNintendoMetrics>>,
+  updatedAtLabel: string,
+): MarketSnapshot {
+  return {
+    sp500: spResolved.sp500,
+    bitcoin: btcResolved.bitcoin,
+    nintendo: nintendoResolved.nintendo,
+    nintendoPreviousClose: nintendoResolved.nintendoPreviousClose,
+    nintendoChangeAbs: nintendoResolved.nintendoChangeAbs,
+    nintendoChangeCurrency: nintendoResolved.nintendoChangeCurrency,
+    sp500GrowthPct: spResolved.sp500GrowthPct,
+    bitcoinGrowthPct: btcResolved.bitcoinGrowthPct,
+    nintendoGrowthPct: nintendoResolved.nintendoGrowthPct,
+    nintendoSource: nintendoResolved.nintendoSource,
+    sp500Source: spResolved.sp500Source,
+    bitcoinSource: btcResolved.bitcoinSource,
+    updatedAt: updatedAtLabel,
+  };
+}
+
 /**
  * Live S&P 500 + BTC + Nintendo — **Stooq** (daily + intraday), **CoinGecko**, **Binance** (BTC fallback).
+ * Returns the best snapshot available: no longer requires both S&P and BTC to avoid falling through to an empty row when one venue fails.
  */
 export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
   const fallback: MarketSnapshot = {
@@ -611,23 +647,8 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       timedAsync("market:resolveBitcoin", () => resolveBitcoinMetrics(btc, { mode: "stooq" })),
       timedAsync("market:resolveNintendo", () => resolveNintendoMetrics()),
     ]);
-    if (spResolved.sp500 !== null && btcResolved.bitcoin !== null) {
-      return {
-        sp500: spResolved.sp500,
-        bitcoin: btcResolved.bitcoin,
-        nintendo: nintendoResolved.nintendo,
-        nintendoPreviousClose: nintendoResolved.nintendoPreviousClose,
-        nintendoChangeAbs: nintendoResolved.nintendoChangeAbs,
-        nintendoChangeCurrency: nintendoResolved.nintendoChangeCurrency,
-        sp500GrowthPct: spResolved.sp500GrowthPct,
-        bitcoinGrowthPct: btcResolved.bitcoinGrowthPct,
-        nintendoGrowthPct: nintendoResolved.nintendoGrowthPct,
-        nintendoSource: nintendoResolved.nintendoSource,
-        sp500Source: spResolved.sp500Source,
-        bitcoinSource: btcResolved.bitcoinSource,
-        updatedAt: stamp(),
-      };
-    }
+    const path1 = buildSnapshotFromResolvedParts(spResolved, btcResolved, nintendoResolved, stamp());
+    if (snapshotHasAnyLiveQuote(path1)) return path1;
   } catch {
     /* fallback below */
   }
@@ -654,23 +675,8 @@ export async function fetchMarketSnapshot(): Promise<MarketSnapshot> {
       ),
       timedAsync("market:resolveNintendo", () => resolveNintendoMetrics()),
     ]);
-    if (spResolved.sp500 !== null && btcResolved.bitcoin !== null) {
-      return {
-        sp500: spResolved.sp500,
-        bitcoin: btcResolved.bitcoin,
-        nintendo: nintendoResolved.nintendo,
-        nintendoPreviousClose: nintendoResolved.nintendoPreviousClose,
-        nintendoChangeAbs: nintendoResolved.nintendoChangeAbs,
-        nintendoChangeCurrency: nintendoResolved.nintendoChangeCurrency,
-        sp500GrowthPct: spResolved.sp500GrowthPct,
-        bitcoinGrowthPct: btcResolved.bitcoinGrowthPct,
-        nintendoGrowthPct: nintendoResolved.nintendoGrowthPct,
-        nintendoSource: nintendoResolved.nintendoSource,
-        sp500Source: spResolved.sp500Source,
-        bitcoinSource: btcResolved.bitcoinSource,
-        updatedAt: stamp(),
-      };
-    }
+    const path2 = buildSnapshotFromResolvedParts(spResolved, btcResolved, nintendoResolved, stamp());
+    if (snapshotHasAnyLiveQuote(path2)) return path2;
   } catch {
     /* final fallback below */
   }

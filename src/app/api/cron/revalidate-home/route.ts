@@ -1,4 +1,5 @@
 import { HYPEMETER_CACHE_TAG_HOME } from "@/lib/homePageCacheConfig";
+import { HYPEMETER_CACHE_TAG_MARKET_SIDECAR } from "@/lib/marketSnapshotHourlyCache";
 import { refreshHomePageRuntimeSnapshot } from "@/lib/homePageRuntimeSnapshot";
 import { revalidateTag } from "next/cache";
 
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
   }
 
   revalidateTag(HYPEMETER_CACHE_TAG_HOME, "default");
+  revalidateTag(HYPEMETER_CACHE_TAG_MARKET_SIDECAR, "default");
   try {
     await refreshHomePageRuntimeSnapshot();
   } catch {

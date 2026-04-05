@@ -16,7 +16,7 @@ import {
   fetchMarketYearlyOverlay,
   type MarketYearlyOverlay,
 } from "@/lib/marketBacktrack";
-import { fetchMarketSnapshot } from "@/lib/fetchMarketSnapshot";
+import { fetchMarketSnapshotHourly } from "@/lib/marketSnapshotHourlyCache";
 import type { MarketSnapshot } from "@/lib/marketSnapshot";
 import { fetchCardTraderPokemonBestSeller } from "@/lib/fetchCardTraderBestSeller";
 import {
@@ -2487,7 +2487,7 @@ async function loadHomePageDataUncached() {
   const lastGoodMarket = lastGoodMarketRaw ? normalizeMarketSnapshot(lastGoodMarketRaw) : null;
   let market = normalizeMarketSnapshot(
     await withSoftTimeout(
-      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshot()),
+      () => timedAsync("home:fetchMarketSnapshot", () => fetchMarketSnapshotHourly()),
       HOME_TIMEOUT_MARKET_MS,
       () => cachedMarket ?? lastGoodMarket ?? emptyMarketSnapshot(),
     ),

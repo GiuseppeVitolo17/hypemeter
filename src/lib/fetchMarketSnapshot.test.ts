@@ -162,7 +162,7 @@ describe("fetchMarketSnapshot (integration, mocked fetch — Stooq-first)", () =
     expect(snap.bitcoinSource).toBe("stooq-daily");
   });
 
-  it("returns full null fallback when both paths fail to produce sp500+bitcoin", async () => {
+  it("returns full null fallback when both paths fail to produce any live quote", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("total failure");
     }) as typeof fetch;

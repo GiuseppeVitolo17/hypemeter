@@ -42,7 +42,7 @@ export function formatSignedChange(
 import type { MarketHighlightKey } from "@/lib/marketBacktrack";
 
 /**
- * Sidecar % uses the same hex as chart strokes (`MARKET_CHART`); sign does not switch to red.
+ * Sidecar % colors: S&P uses semantic up/down; BTC / Nintendo / inflation follow chart stroke hues.
  */
 export function growthPctColorClass(
   value: number | null,
@@ -59,9 +59,14 @@ export function growthPctColorClass(
     if (series === "btc") return "text-[#fbbf24]/90";
     if (series === "nintendo") return "text-[#fb7185]/90";
     if (series === "inflation") return "text-[#818cf8]/90";
-    return "text-[#34d399]/90";
+    return "text-slate-400";
   }
   if (n === 0) return "text-slate-300";
+  if (series === "sp500") {
+    if (n < 0) return "text-rose-400";
+    if (n > 0) return "text-emerald-400";
+    return "text-slate-300";
+  }
   if (series === "btc") return "text-[#fbbf24]";
   if (series === "nintendo") return "text-[#fb7185]";
   if (series === "inflation") return "text-[#818cf8]";
