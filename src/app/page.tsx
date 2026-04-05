@@ -181,7 +181,8 @@ const HOME_TIMEOUT_MARKET_MS = 2400;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_OVERLAY_MS = 900;
-const HOME_TIMEOUT_CARD_MS = 700;
+const HOME_TIMEOUT_CARD_WARM_MS = 900;
+const HOME_TIMEOUT_CARD_COLD_MS = 9_000;
 const HOME_TIMEOUT_POKEMON_MS = 800;
 const HOME_PAGE_RUNTIME_STALE_MS = HOME_PAGE_DATA_CACHE_TTL_SEC * 1000;
 let homePageRefreshInFlight: Promise<void> | null = null;
@@ -2477,7 +2478,7 @@ async function loadHomePageDataUncached() {
   });
   const cardTraderBestSeller = await withSoftTimeout(
     () => timedAsync("home:fetchCardTraderPokemonBestSeller", () => fetchCardTraderPokemonBestSeller()),
-    HOME_TIMEOUT_CARD_MS,
+    cachedCardHighlight || lastGoodCardHighlight ? HOME_TIMEOUT_CARD_WARM_MS : HOME_TIMEOUT_CARD_COLD_MS,
     () => cachedCardHighlight ?? lastGoodCardHighlight ?? null,
   );
   if (isCardHighlightData(cardTraderBestSeller)) {
