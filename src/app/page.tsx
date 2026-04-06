@@ -607,12 +607,17 @@ async function fetchDayStatsHeadlinesFallback(): Promise<NewsItem[] | null> {
     `("Pokemon" OR "Pokémon" OR "Pokemon TCG") after:${startIso} before:${endIso}`,
   );
   const url = `https://news.google.com/rss/search?q=${query}&hl=en-US&gl=US&ceid=US:en`;
-  const response = await fetchWithTimeout(url, {
-    next: { revalidate: 0 },
-    headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
-    timeoutMs: 12_000,
-  });
-  if (!response?.ok) return null;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      next: { revalidate: 0 },
+      headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
   const xml = await response.text();
   const rows = parseNews(xml).filter((item) => /(pokemon|pokémon)/i.test(item.title));
   const selected = sanitizeNewsItems(rows, 28);
@@ -2471,11 +2476,16 @@ async function loadHomePageDataUncached() {
         `("Pokemon" OR "Pokémon" OR "Pokemon TCG") after:${startIso} before:${endIso}`,
       );
       const dayUrl = `https://news.google.com/rss/search?q=${dayQuery}&hl=en-US&gl=US&ceid=US:en`;
-      const dayResponse = await fetchWithTimeout(dayUrl, {
-        next: { revalidate: 0 },
-        headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
-        timeoutMs: 12_000,
-      });
+      let dayResponse: Response | null = null;
+      try {
+        dayResponse = await fetch(dayUrl, {
+          next: { revalidate: 0 },
+          headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
+          signal: AbortSignal.timeout(12_000),
+        });
+      } catch {
+        dayResponse = null;
+      }
       if (dayResponse?.ok) {
         const xml = await dayResponse.text();
         const parsed = parseNews(xml);
