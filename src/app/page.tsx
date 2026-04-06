@@ -192,7 +192,7 @@ const HOME_CARD_HIGHLIGHT_CACHE_KEY = "home_card_highlight_v1";
 const HOME_CARD_HIGHLIGHT_LAST_GOOD_CACHE_KEY = "home_card_highlight_last_good_v1";
 const MARKET_SNAPSHOT_CACHE_KEY = "market_snapshot";
 const MARKET_SNAPSHOT_LAST_GOOD_CACHE_KEY = "market_snapshot_last_good_v1";
-const HOME_TIMEOUT_NEWS_MS = 8000;
+const HOME_TIMEOUT_NEWS_MS = 14_000;
 const HOME_TIMEOUT_MARKET_MS = 3200;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
@@ -2438,6 +2438,42 @@ async function loadHomePageDataUncached() {
           return selected;
         }
       }
+      // Google RSS primary query can intermittently return empty/blocked responses.
+      // Secondary day-bounded query (same source) mirrors `/api/day-stats` and is more stable.
+      const start = new Date();
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 1);
+      const startIso = start.toISOString().slice(0, 10);
+      const endIso = end.toISOString().slice(0, 10);
+      const dayQuery = encodeURIComponent(
+        `("Pokemon" OR "Pokémon" OR "Pokemon TCG") after:${startIso} before:${endIso}`,
+      );
+      const dayUrl = `https://news.google.com/rss/search?q=${dayQuery}&hl=en-US&gl=US&ceid=US:en`;
+      const dayResponse = await fetchWithTimeout(dayUrl, {
+        next: { revalidate: 0 },
+        headers: { "user-agent": "Mozilla/5.0 hypemeter-runtime" },
+        timeoutMs: 12_000,
+      });
+      if (dayResponse?.ok) {
+        const xml = await dayResponse.text();
+        const parsed = parseNews(xml);
+        const selected = sanitizeNewsItems(parsed.filter((item) => /(pokemon|pokémon)/i.test(item.title)), 28);
+        if (selected.length > 0) {
+          const payload: NewsCachePayload = {
+            items: selected,
+            fetchedAtMs: Date.now(),
+            source: "live",
+          };
+          upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY, selected);
+          upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_CACHE_KEY_V2, payload);
+          if (isMeaningfulNewsItems(selected)) {
+            upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY, selected);
+            upsertRuntimeSnapshotToDb(HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY_V2, payload);
+          }
+          return selected;
+        }
+      }
+
       return cachedNewsItems.length > 0
         ? cachedNewsItems
         : lastGoodNewsItems.length > 0
