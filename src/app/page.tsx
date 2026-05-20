@@ -135,8 +135,8 @@ type PokemonOfDayArticle = {
   pokemonMentions: string[];
 };
 
-// Always render dynamically from the latest local runtime snapshot/fallback. External refresh work is scheduled
-// after the response so a bad upstream call cannot poison cached HTML for hours.
+// Always render dynamically from the latest local runtime snapshot/fallback. Normal homepage renders must not
+// run the full external refresh pipeline, otherwise slow upstreams can block the response.
 export const dynamic = "force-dynamic";
 
 /**
@@ -202,6 +202,7 @@ const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
 const HOME_TIMEOUT_CARD_COLD_MS = 2_500;
+const HOME_BOOTSTRAP_NEWS_MS = 2_200;
 const MARKET_OVERLAY_REFRESH_MS = 90 * 60 * 1000;
 const marketOverlayRefreshInFlight = new Set<string>();
 
@@ -627,6 +628,29 @@ async function fetchDayStatsHeadlinesFallback(): Promise<NewsItem[] | null> {
   const rows = parseNews(xml).filter((item) => /(pokemon|pokémon)/i.test(item.title));
   const selected = sanitizeNewsItems(rows, 28);
   return selected.length > 0 ? selected : null;
+}
+
+async function fetchBootstrapNewsItems(): Promise<NewsItem[] | null> {
+  const responses = await Promise.all(
+    [buildStableDailyNewsQueryUrl(), NEWS_URL_BACKUP].map((url) =>
+      fetchWithTimeout(url, {
+        next: { revalidate: 0 },
+        headers: { "user-agent": "Mozilla/5.0 hypemeter-bootstrap" },
+        timeoutMs: HOME_BOOTSTRAP_NEWS_MS,
+      }),
+    ),
+  );
+
+  for (const response of responses) {
+    if (!response?.ok) continue;
+    const parsed = parseNews(await response.text());
+    const curated = curateNewsItems(parsed);
+    const fallback = parsed.filter((item) => /(pokemon|pokémon)/i.test(item.title));
+    const selected = sanitizeNewsItems(curated.length > 0 ? curated : fallback, 28);
+    if (isMeaningfulNewsItems(selected)) return selected;
+  }
+
+  return null;
 }
 
 function buildStableDailyNewsQueryUrl() {
@@ -2900,7 +2924,7 @@ function readHomePageRuntimeSnapshot(): HomePageRuntimeSnapshot | null {
   return raw;
 }
 
-function buildInstantHomePagePayload(): HomePagePayload {
+function buildInstantHomePagePayload(newsOverride?: NewsItem[]): HomePagePayload {
   const cachedNewsV2 = asNewsCachePayload(
     readRuntimeSnapshotFromDb<NewsCachePayload>(HOME_NEWS_ITEMS_CACHE_KEY_V2),
   );
@@ -2912,17 +2936,20 @@ function buildInstantHomePagePayload(): HomePagePayload {
     HOME_NEWS_ITEMS_LAST_GOOD_CACHE_KEY,
   );
   const hardFallbackItems = sanitizeNewsItems(NEWS_ITEMS_HARD_FALLBACK, 28);
+  const overrideNewsItems = sanitizeNewsItems(newsOverride ?? [], 28);
   const cachedNewsItems = sanitizeNewsItems(cachedNewsV2?.items ?? cachedNewsLegacyRaw ?? [], 28);
   const lastGoodNewsItems = sanitizeNewsItems(lastGoodNewsV2?.items ?? lastGoodNewsLegacyRaw ?? [], 28);
-  const items = isMeaningfulNewsItems(cachedNewsItems)
-    ? cachedNewsItems
-    : isMeaningfulNewsItems(lastGoodNewsItems)
-      ? lastGoodNewsItems
-      : cachedNewsItems.length > 0
-        ? cachedNewsItems
-        : lastGoodNewsItems.length > 0
-          ? lastGoodNewsItems
-          : hardFallbackItems;
+  const items = isMeaningfulNewsItems(overrideNewsItems)
+    ? overrideNewsItems
+    : isMeaningfulNewsItems(cachedNewsItems)
+      ? cachedNewsItems
+      : isMeaningfulNewsItems(lastGoodNewsItems)
+        ? lastGoodNewsItems
+        : cachedNewsItems.length > 0
+          ? cachedNewsItems
+          : lastGoodNewsItems.length > 0
+            ? lastGoodNewsItems
+            : hardFallbackItems;
 
   const cachedSearchStats = readRuntimeSnapshotFromDb<SearchInterestStats>(HOME_SEARCH_STATS_CACHE_KEY);
   const searchStats = cachedSearchStats ?? { score: 35, todayTraffic: 0, yesterdayTraffic: 0 };
@@ -3139,12 +3166,26 @@ function buildInstantHomePagePayload(): HomePagePayload {
   };
 }
 
+export async function loadHomePageDataForTests() {
+  return loadHomePageData();
+}
+
 async function loadHomePageData() {
   const snapshot = readHomePageRuntimeSnapshot();
   if (snapshot && isMeaningfulNewsItems(snapshot.payload.items)) {
     return snapshot.payload;
   }
-  return buildInstantHomePagePayload();
+  const instant = buildInstantHomePagePayload();
+  if (isMeaningfulNewsItems(instant.items)) return instant;
+
+  const bootstrappedItems = await withSoftTimeout(
+    () => timedAsync("home:bootstrapNewsOnly", () => fetchBootstrapNewsItems()),
+    HOME_BOOTSTRAP_NEWS_MS + 300,
+    () => null,
+  );
+  if (!bootstrappedItems || !isMeaningfulNewsItems(bootstrappedItems)) return instant;
+
+  return buildInstantHomePagePayload(bootstrappedItems);
 }
 
 /** Uncached pipeline — use from `/debug` timing or when bypassing Data Cache. */
