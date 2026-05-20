@@ -3,6 +3,7 @@ import {
   extractBestSellersSection,
   parseCardTraderBestSellerFromText,
   pickBestCardImageUrl,
+  pokoinCardUrlFromCardTraderData,
   sanitizeCardHighlightName,
 } from "./fetchCardTraderBestSeller";
 
@@ -41,7 +42,7 @@ describe("fetchCardTraderBestSeller", () => {
     const r = parseCardTraderBestSellerFromText(md);
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toContain("card.png");
-    expect(r!.cardUrl).toContain("cardtrader.com");
+    expect(r!.cardUrl).toBe("https://pokoin.com/12345");
     expect(r!.fromPrice).toBe("12.34");
   });
 
@@ -54,7 +55,7 @@ https://www.cardtrader.com/en/pokemon/cards/999-name
     const r = parseCardTraderBestSellerFromText(md);
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toContain("webp");
-    expect(r!.cardUrl).toContain("/cards/");
+    expect(r!.cardUrl).toBe("https://pokoin.com/999");
   });
 
   it("parseCardTraderBestSellerFromText: card only → empty imageUrl", () => {
@@ -64,7 +65,7 @@ https://www.cardtrader.com/en/pokemon/cards/only-link
     const r = parseCardTraderBestSellerFromText(md);
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toBe("");
-    expect(r!.cardUrl).toContain("/cards/");
+    expect(r!.cardUrl).toContain("cardtrader.com");
   });
 
   it("pickBestCardImageUrl prefers blueprint over CardTrader fallback show.png", () => {
@@ -86,7 +87,7 @@ https://www.cardtrader.com/en/pokemon/cards/only-link
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toContain("https://www.cardtrader.com");
     expect(r!.imageUrl).toContain("uploads/blueprints");
-    expect(r!.cardUrl).toContain("cardtrader.com");
+    expect(r!.cardUrl).toBe("https://pokoin.com/256093");
   });
 
   it("parse: blueprint URL with parentheses in filename (e.g. show_...(2).jpg)", () => {
@@ -109,7 +110,7 @@ https://www.cardtrader.com/uploads/blueprints/image/111169/show_pidgeotto-22-102
     expect(r).not.toBeNull();
     expect(r!.imageUrl).toContain("preview_pidgeotto");
     expect(r!.imageUrl).toContain("(2).jpg");
-    expect(r!.cardUrl).toContain("/cards/");
+    expect(r!.cardUrl).toBe("https://pokoin.com/111169");
   });
 
   it("parse: does not swap first row’s preview_ art for another row’s higher-scoring show_ blueprint", () => {
@@ -122,5 +123,20 @@ https://www.cardtrader.com/uploads/blueprints/image/111169/show_pidgeotto-22-102
     expect(r!.name).toContain("Gloom");
     expect(r!.imageUrl).toContain("preview_gloom");
     expect(r!.imageUrl).not.toContain("show_other");
+  });
+
+  it("builds Pokoin card URLs from shared blueprint ids", () => {
+    expect(
+      pokoinCardUrlFromCardTraderData(
+        "https://www.cardtrader.com/en/pokemon/cards/274267-nemona",
+        "",
+      ),
+    ).toBe("https://pokoin.com/274267");
+    expect(
+      pokoinCardUrlFromCardTraderData(
+        "https://www.cardtrader.com/en/cards/gloom-slug",
+        "https://www.cardtrader.com/uploads/blueprints/image/255640/show_gloom.jpg",
+      ),
+    ).toBe("https://pokoin.com/255640");
   });
 });

@@ -9,7 +9,7 @@ export default function ConvictionPage() {
             href="/"
             className="inline-flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.12em] text-cyan-200 transition-colors hover:bg-cyan-400/20"
           >
-            Back to Monmeter
+            Back to Pokoin News
           </Link>
         </div>
 
@@ -35,9 +35,9 @@ export default function ConvictionPage() {
               </p>
             </article>
             <article className="rounded-2xl border border-white/10 bg-slate-950/55 p-4 sm:col-span-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">Monmeter Context</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">Pokoin News Context</p>
               <p className="mt-2 text-sm leading-relaxed text-slate-300">
-                In Monmeter, conviction is a reliability lens: not just direction, but whether the direction looks
+                In Pokoin News, conviction is a reliability lens: not just direction, but whether the direction looks
                 dependable across the full signal stack.
               </p>
             </article>

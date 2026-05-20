@@ -57,10 +57,7 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     if (process.env.NODE_ENV === "development") {
-      console.warn("[card-highlight-image] proxy failed, redirecting to origin:", err);
-    }
-    if (isAllowedCardTraderImageUrl(imageUrl)) {
-      return Response.redirect(imageUrl, 302);
+      console.warn("[card-highlight-image] proxy failed:", err);
     }
     return new Response(null, { status: 502 });
   }

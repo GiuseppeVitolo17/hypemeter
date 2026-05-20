@@ -15,12 +15,16 @@ function isTrustedRasterContentType(raw: string): boolean {
   return /^image\/(jpeg|jpg|pjpeg|png|gif|webp|avif|x-png|bmp|tiff|heic|heif)$/i.test(base);
 }
 
-/** Only fetch images from CardTrader hosts (avoid open proxy). */
+/** Only fetch trusted card highlight images (avoid open proxy). */
 export function isAllowedCardTraderImageUrl(url: string): boolean {
   try {
     const u = new URL(url);
     if (u.protocol !== "https:") return false;
-    return /\.cardtrader\.com$/i.test(u.hostname) || u.hostname === "cardtrader.com";
+    return (
+      /\.cardtrader\.com$/i.test(u.hostname) ||
+      u.hostname === "cardtrader.com" ||
+      u.hostname === "cdn.pokoin.com"
+    );
   } catch {
     return false;
   }

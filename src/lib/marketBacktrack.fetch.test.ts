@@ -2,21 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchMarketYearlyOverlay } from "@/lib/marketBacktrack";
 
 /**
- * Integration-style tests: mock Stooq daily CSV + FRED CPI.
+ * Integration-style tests: mock Stooq daily CSV + CPI fallbacks.
  * Ensures overlay arrays always match history length (client chart expects length === n).
  */
 
 function csvRes(body: string): Response {
   return new Response(body, { status: 200, headers: { "Content-Type": "text/csv" } });
-}
-
-/** Minimal FRED-style CSV: December CPI only, rising ~2.5 pts/year for YoY. */
-function mockFredCpiCsvFrom2004() {
-  const lines = ["observation_date,CPIAUCSL"];
-  for (let y = 2004; y <= 2027; y++) {
-    lines.push(`${y}-12-01,${(100 + (y - 2004) * 2.5).toFixed(3)}`);
-  }
-  return lines.join("\n");
 }
 
 /** Stooq daily CSV: one row per year (last close in year). */
@@ -51,7 +42,7 @@ function mockYahooMonthlyJson(symbol: string, startYear: number, months: number,
   });
 }
 
-describe("fetchMarketYearlyOverlay (mocked Stooq + FRED)", () => {
+describe("fetchMarketYearlyOverlay (mocked Stooq + CPI)", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -67,7 +58,6 @@ describe("fetchMarketYearlyOverlay (mocked Stooq + FRED)", () => {
     const spCsv = mockStooqDailyYearly(2005, 2026, 1000, 50);
     const btcCsv = mockStooqDailyYearly(2005, 2026, 100, 10);
     const ntCsv = mockStooqDailyYearly(2005, 2026, 10, 0.2);
-    const fredCsv = mockFredCpiCsvFrom2004();
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -80,8 +70,8 @@ describe("fetchMarketYearlyOverlay (mocked Stooq + FRED)", () => {
       if (url.includes("stooq.com/q/d/l") && url.includes("ntdoy")) {
         return csvRes(ntCsv);
       }
-      if (url.includes("fred.stlouisfed.org/graph/fredgraph.csv") && url.includes("CPIAUCSL")) {
-        return csvRes(fredCsv);
+      if (url.includes("fred.stlouisfed.org/graph/fredgraph.csv")) {
+        throw new Error("FRED graph CSV must not be called from overlay refresh");
       }
       if (url.includes("api.worldbank.org")) {
         return new Response(
@@ -126,7 +116,6 @@ describe("fetchMarketYearlyOverlay (mocked Stooq + FRED)", () => {
     const yahooSp = mockYahooMonthlyJson("^GSPC", 2023, 40, 3800, 22);
     const yahooBtc = mockYahooMonthlyJson("BTC-USD", 2023, 40, 25000, 1500);
     const yahooNt = mockYahooMonthlyJson("NTDOY", 2023, 40, 10, 0.3);
-    const fredCsv = mockFredCpiCsvFrom2004();
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -145,8 +134,8 @@ describe("fetchMarketYearlyOverlay (mocked Stooq + FRED)", () => {
       ) {
         return new Response(yahooNt, { status: 200, headers: { "Content-Type": "application/json" } });
       }
-      if (url.includes("fred.stlouisfed.org/graph/fredgraph.csv") && url.includes("CPIAUCSL")) {
-        return csvRes(fredCsv);
+      if (url.includes("fred.stlouisfed.org/graph/fredgraph.csv")) {
+        throw new Error("FRED graph CSV must not be called from overlay refresh");
       }
       if (url.includes("api.worldbank.org")) {
         return new Response(JSON.stringify([{}, []]), {

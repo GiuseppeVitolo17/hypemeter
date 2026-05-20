@@ -5,7 +5,7 @@ type TopicPage = {
   title: string;
   intro: string;
   points: string[];
-  monmeter: string;
+  pokoin: string;
   sourceLabel?: string;
   sourceUrl?: string;
 };
@@ -20,8 +20,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Cluster repetition across sources increases confidence.",
       "Signal lists are now fallback-protected, so the panel is never empty.",
     ],
-    monmeter:
-      "Monmeter uses these signals as one of the catalyst layers feeding quality and narrative context, not as a standalone prediction.",
+    pokoin:
+      "Pokoin News uses these signals as one of the catalyst layers feeding quality and narrative context, not as a standalone prediction.",
   },
   "community-hype": {
     title: "Pokemon Community Hype",
@@ -32,8 +32,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Mixed or declining values can indicate fading attention cycles.",
       "Spikes can be temporary; consistency over time is more meaningful.",
     ],
-    monmeter:
-      "In Monmeter, this score contributes to the community side of the model and is blended with market-side signals.",
+    pokoin:
+      "In Pokoin News, this score contributes to the community side of the model and is blended with market-side signals.",
   },
   "market-heat": {
     title: "Pokemon TCG Market Heat",
@@ -44,8 +44,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Low heat can indicate consolidation or softer speculative appetite.",
       "Heat is descriptive of current regime, not a guarantee of continuation.",
     ],
-    monmeter:
-      "Monmeter uses Market Heat to represent the market component that complements the community component.",
+    pokoin:
+      "Pokoin News uses Market Heat to represent the market component that complements the community component.",
   },
   "signal-quality": {
     title: "Signal Quality",
@@ -56,8 +56,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "It penalizes concentration and noisy/low-trust conditions.",
       "A higher value means the model context is stronger, not risk-free.",
     ],
-    monmeter:
-      "In Monmeter, Signal Quality helps calibrate trust in current readings and narrative framing.",
+    pokoin:
+      "In Pokoin News, Signal Quality helps calibrate trust in current readings and narrative framing.",
   },
   "model-weights": {
     title: "Model Weights",
@@ -68,8 +68,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Market Momentum: 20%, Availability Pressure: 18%, Event Catalyst: 14%",
       "Community Sentiment: 11%, Product Stress: 11%",
     ],
-    monmeter:
-      "Monmeter combines weighted components into one composite index to balance speed, breadth, and robustness.",
+    pokoin:
+      "Pokoin News combines weighted components into one composite index to balance speed, breadth, and robustness.",
   },
   "sentiment-1m": {
     title: "1 Month Sentiment",
@@ -80,7 +80,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Useful for tactical risk-on/risk-off posture.",
       "More sensitive to transient noise.",
     ],
-    monmeter:
+    pokoin:
       "This window emphasizes near-term movement and quick narrative changes.",
   },
   "sentiment-1y": {
@@ -92,7 +92,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Less jumpy than 1-month window.",
       "Useful for intermediate positioning bias.",
     ],
-    monmeter:
+    pokoin:
       "This window blends market rhythm with social strength over a broader cycle.",
   },
   "sentiment-5y": {
@@ -104,7 +104,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Helps identify whether current regime is unusually strong/weak.",
       "Moves slowly by design.",
     ],
-    monmeter:
+    pokoin:
       "This window anchors the dashboard in long-cycle context to reduce overreaction.",
   },
   "social-google-search": {
@@ -116,8 +116,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Sharp drops can indicate cooling interest.",
       "Search often leads, but confirmation from other channels matters.",
     ],
-    monmeter:
-      "Monmeter uses this as a high-coverage demand signal in the social pulse mix.",
+    pokoin:
+      "Pokoin News uses this as a high-coverage demand signal in the social pulse mix.",
   },
   "social-reddit": {
     title: "Social Signal Pulse - Reddit",
@@ -128,7 +128,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Thread quality and context matter, not only volume.",
       "Useful to detect narrative shifts early.",
     ],
-    monmeter:
+    pokoin:
       "Reddit contributes to community breadth and momentum in social pulse scoring.",
   },
   "social-youtube": {
@@ -140,8 +140,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Sustained performance is stronger than one-day spikes.",
       "Useful for trend reinforcement checks.",
     ],
-    monmeter:
-      "YouTube helps quantify content-led narrative expansion in Monmeter.",
+    pokoin:
+      "YouTube helps quantify content-led narrative expansion in Pokoin News.",
   },
   "social-facebook": {
     title: "Social Signal Pulse - Facebook",
@@ -152,7 +152,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Can lag early-adopter channels but confirm mainstream adoption.",
       "Useful for breadth confirmation.",
     ],
-    monmeter:
+    pokoin:
       "Facebook is included as a broad-reach validation layer in social pulse.",
   },
   "social-threads": {
@@ -164,7 +164,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "High volatility is common and expected.",
       "Best interpreted with cross-channel confirmation.",
     ],
-    monmeter:
+    pokoin:
       "Threads contributes high-speed momentum context to the social mix.",
   },
   "social-pokemon-official": {
@@ -176,7 +176,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Announcements often precede broader social propagation.",
       "Best read together with community response channels.",
     ],
-    monmeter:
+    pokoin:
       "This channel adds first-party signal quality to the social pulse layer.",
   },
   "component-search-interest": {
@@ -188,8 +188,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Higher values indicate stronger discovery demand and audience pull.",
       "Can react quickly to reveals, launches, and trend bursts.",
     ],
-    monmeter:
-      "This component is a core demand driver in Monmeter and heavily influences short-term score movement.",
+    pokoin:
+      "This component is a core demand driver in Pokoin News and heavily influences short-term score movement.",
   },
   "component-market-momentum": {
     title: "Component - Market Momentum",
@@ -200,8 +200,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Higher values suggest stronger trend persistence on market-side signals.",
       "Lower values can point to loss of follow-through or range conditions.",
     ],
-    monmeter:
-      "Monmeter uses this to represent directional market force rather than one-off price noise.",
+    pokoin:
+      "Pokoin News uses this to represent directional market force rather than one-off price noise.",
   },
   "component-availability-pressure": {
     title: "Component - Availability Pressure",
@@ -212,7 +212,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Higher values suggest tighter availability and stronger scarcity pressure.",
       "Lower values suggest easier supply conditions or less friction.",
     ],
-    monmeter:
+    pokoin:
       "This component helps explain when access constraints are amplifying hype dynamics.",
   },
   "component-release-catalyst": {
@@ -224,8 +224,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Detects event-driven boosts tied to launches and announcements.",
       "Works best with cross-source and cross-platform confirmation.",
     ],
-    monmeter:
-      "Monmeter uses this as a catalyst layer that can accelerate score changes during event windows.",
+    pokoin:
+      "Pokoin News uses this as a catalyst layer that can accelerate score changes during event windows.",
   },
   "component-community-sentiment": {
     title: "Component - Community Sentiment",
@@ -236,7 +236,7 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Higher values suggest constructive tone plus broad social participation.",
       "Lower values can reflect skepticism, fragmentation, or weaker engagement quality.",
     ],
-    monmeter:
+    pokoin:
       "This component captures mood quality, not just raw volume, inside the social community layer.",
   },
   "component-product-stress": {
@@ -248,8 +248,8 @@ const TOPIC_CONTENT: Record<string, TopicPage> = {
       "Higher values indicate more operational pressure in the ecosystem.",
       "Helps flag frictions that can distort demand or execution quality.",
     ],
-    monmeter:
-      "Monmeter uses Product Stress as a risk/friction lens to contextualize hype under operational strain.",
+    pokoin:
+      "Pokoin News uses Product Stress as a risk/friction lens to contextualize hype under operational strain.",
   },
 };
 
@@ -270,7 +270,7 @@ export default async function LearnTopicPage({
             href="/"
             className="inline-flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-[0.12em] text-cyan-200 transition-colors hover:bg-cyan-400/20"
           >
-            Back to Monmeter
+            Back to Pokoin News
           </Link>
         </div>
 
@@ -286,7 +286,7 @@ export default async function LearnTopicPage({
             ))}
           </ul>
           <p className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3 text-sm leading-relaxed text-slate-200">
-            {content.monmeter}
+            {content.pokoin}
           </p>
         </section>
       </div>

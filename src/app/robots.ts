@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = "https://monmeter.vercel.app";
+  const baseUrl = "https://news.pokoin.com";
 
   return {
     rules: [

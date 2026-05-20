@@ -3,7 +3,8 @@
  *
  * **CPI YoY (inflation line):** baseline years from `src/data/staticCpiYoYByYear.json` (regenerate yearly:
  * `node scripts/generate-static-cpi-yojson.mjs`). For live years on the chart only, gap-fill order is
- * (1) FRED API when env `FRED_API_KEY` is set → (2) World Bank → (3) FRED `fredgraph.csv` tail parse.
+ * (1) FRED API when env `FRED_API_KEY` is set → (2) World Bank. FRED graph CSV is intentionally
+ * kept out of the request path because it is slow and intermittently unstable.
  */
 
 import { timedAsync } from "@/lib/serverTiming";
@@ -53,9 +54,9 @@ const STOOQ_HIST_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 /** Bound slow upstreams so Vercel serverless (often ~10s on Hobby) doesn’t hang on one fetch. */
-const HIST_FETCH_TIMEOUT_MS = 18_000;
-const FRED_API_TIMEOUT_MS = 12_000;
-const WB_INFLATION_TIMEOUT_MS = 10_000;
+const HIST_FETCH_TIMEOUT_MS = 8_000;
+const FRED_API_TIMEOUT_MS = 3_000;
+const WB_INFLATION_TIMEOUT_MS = 3_000;
 
 /**
  * Durable yearly fallback shape so overlays stay informative during upstream outages on cold starts.
@@ -391,7 +392,7 @@ async function fetchFredLiveYoYFromApi(cy: number, liveYears: number[]): Promise
 
 /**
  * World Bank annual inflation % (USA) — small JSON, often reachable when FRED is slow/blocked.
- * May lag vs monthly CPI; fills gaps after FRED API, before the heavy FRED CSV fetch.
+ * May lag vs monthly CPI; fills gaps after FRED API.
  * @see https://data.worldbank.org/indicator/FP.CPI.TOTL.ZG?locations=US
  */
 async function fetchWorldBankInflationYoYForYears(liveYears: number[]): Promise<Map<number, number>> {
@@ -445,30 +446,7 @@ export function parseFredCpiCsvToMonthlyRowsFromTail(csv: string, maxDataRows = 
   return parseFredCpiCsvToMonthlyRows([header, ...dataLines].join("\n"));
 }
 
-/** FRED graph CSV — last resort; parse tail only; timeout so SSR never hangs. */
-async function fetchFredLiveYoYFromGraphCsv(liveYears: number[]): Promise<Map<number, number>> {
-  if (liveYears.length === 0) return new Map();
-  try {
-    const res = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=CPIAUCSL", {
-      next: { revalidate: 3600 },
-      headers: { "user-agent": STOOQ_HIST_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return new Map();
-    const rows = parseFredCpiCsvToMonthlyRowsFromTail(await res.text());
-    const full = buildCpiYoYPercentByYearFromMonthlyRows(rows);
-    const out = new Map<number, number>();
-    for (const y of liveYears) {
-      const v = full.get(y);
-      if (v !== undefined) out.set(y, v);
-    }
-    return out;
-  } catch {
-    return new Map();
-  }
-}
-
-/** Add values from `fill` only for `years` keys missing in `primary` (FRED API/CSV wins on overlap). */
+/** Add values from `fill` only for `years` keys missing in `primary` (FRED API wins on overlap). */
 function mergeGapFill(
   primary: Map<number, number>,
   fill: Map<number, number>,
@@ -502,14 +480,6 @@ async function fetchFredCpiYoYByYear(chartYears: number[]): Promise<Map<number, 
       liveYears,
     );
   }
-  if (liveYears.some((y) => !live.has(y))) {
-    live = mergeGapFill(
-      live,
-      await timedAsync("cpi:fredGraphCsv", () => fetchFredLiveYoYFromGraphCsv(liveYears)),
-      liveYears,
-    );
-  }
-
   for (const [y, v] of live) base.set(y, v);
   return base;
 }
@@ -830,7 +800,7 @@ export async function fetchMarketYearlyOverlay(years: number[]): Promise<MarketY
     timedAsync("overlay:stooq:btc", () => fetchStooqYearlyClosesBySymbols(["btcusd", "btcusd.v"])),
     timedAsync("overlay:stooqNtdyUs", () => fetchStooqYearlyClosesBySymbol("ntdoy.us")),
     timedAsync("overlay:stooqNtdy", () => fetchStooqYearlyClosesBySymbol("ntdoy")),
-    timedAsync("overlay:cpiYoY(fred+wb+csv)", () => fetchFredCpiYoYByYear(years)),
+    timedAsync("overlay:cpiYoY(fred+wb)", () => fetchFredCpiYoYByYear(years)),
     timedAsync("overlay:monthly:sp500", () => fetchStooqMonthlyClosesBySymbols(["^spx", "spx", "spy.us"])),
     timedAsync("overlay:monthly:btc", () => fetchStooqMonthlyClosesBySymbols(["btcusd", "btcusd.v"])),
     timedAsync("overlay:monthly:ntUs", () => fetchStooqMonthlyClosesBySymbol("ntdoy.us")),

@@ -24,22 +24,19 @@ type Props = {
   className?: string;
 };
 
-type LoadMode = "proxy" | "direct" | "placeholder";
+type LoadMode = "proxy" | "placeholder";
 
 /**
- * Try same-origin `/api/card-highlight-image` first (cached bytes, avoids hotlink quirks).
- * On error, retry direct CardTrader URL; then placeholder.
+ * Always load through same-origin `/api/card-highlight-image` so CardTrader never sees the
+ * visitor's browser/referrer. If the proxy fails, fall back to a local placeholder.
  */
 export function CardTraderHighlightImage({ imageUrl, alt, width, height, className }: Props) {
   const direct = resolveRemoteCardImageSrc(imageUrl.trim());
   const [mode, setMode] = useState<LoadMode>(() => (direct ? "proxy" : "placeholder"));
 
   const onError = useCallback(() => {
-    setMode((m) => {
-      if (m === "proxy" && direct) return "direct";
-      return "placeholder";
-    });
-  }, [direct]);
+    setMode("placeholder");
+  }, []);
 
   if (!direct || mode === "placeholder") {
     return (
@@ -56,12 +53,11 @@ export function CardTraderHighlightImage({ imageUrl, alt, width, height, classNa
 
   /** Must match SSR `imageUrl` or the proxy can fetch a different “current best seller” than the label. */
   const proxySrc = `/api/card-highlight-image?url=${encodeURIComponent(direct)}`;
-  const src = mode === "proxy" ? proxySrc : direct;
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- proxy + direct CardTrader URLs
+    // eslint-disable-next-line @next/next/no-img-element -- same-origin image proxy avoids leaking referrers.
     <img
-      src={src}
+      src={proxySrc}
       alt={alt || "Card highlight"}
       width={width}
       height={height}

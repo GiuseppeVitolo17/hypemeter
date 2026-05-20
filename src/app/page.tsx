@@ -1,4 +1,5 @@
 import BacktrackMarketSection from "@/components/BacktrackMarketSection";
+import { AdSenseSlot } from "@/components/AdSenseSlot";
 import { HomeCardHighlightAsync } from "@/components/HomeCardHighlightAsync";
 import DayStatsCalendar from "@/components/DayStatsCalendar";
 import { HomePageClientCacheWriter } from "@/components/HomePageClientCacheWriter";
@@ -37,12 +38,14 @@ import {
   readBacktrackBaselineFromDb,
   readHypeDailyScoreHistoryFromDb,
   readPokemonDayBundleFromDb,
+  readRuntimeSnapshotRecordFromDb,
   readRuntimeSnapshotFromDb,
   upsertHypeDailyScoreToDb,
   upsertPokemonDayBundleToDb,
   upsertRuntimeSnapshotToDb,
 } from "@/lib/staticDataDb";
 import Link from "next/link";
+import { after } from "next/server";
 import { unstable_cache } from "next/cache";
 import { Suspense } from "react";
 
@@ -197,9 +200,10 @@ const HOME_TIMEOUT_NEWS_MS = 26_000;
 const HOME_TIMEOUT_MARKET_MS = 3200;
 const HOME_TIMEOUT_SIGNAL_MS = 900;
 const HOME_TIMEOUT_SOCIAL_MS = 1000;
-const HOME_TIMEOUT_OVERLAY_MS = 900;
 const HOME_TIMEOUT_CARD_WARM_MS = 900;
 const HOME_TIMEOUT_CARD_COLD_MS = 9_000;
+const MARKET_OVERLAY_REFRESH_MS = 90 * 60 * 1000;
+const marketOverlayRefreshInFlight = new Set<string>();
 
 const blockedSourceHints = [
   "hotelier.com.py",
@@ -1997,6 +2001,20 @@ function buildOverlayFallbackFromHistory(history: YearScore[]): MarketYearlyOver
   };
 }
 
+function scheduleMarketOverlayRefresh(years: number[], runtimeKey: string, stale: boolean) {
+  if (!stale || marketOverlayRefreshInFlight.has(runtimeKey)) return;
+  marketOverlayRefreshInFlight.add(runtimeKey);
+  after(async () => {
+    try {
+      await timedAsync("home:refreshMarketYearlyOverlay", () => fetchMarketYearlyOverlay(years));
+    } catch {
+      /* Keep serving the previous cached overlay. */
+    } finally {
+      marketOverlayRefreshInFlight.delete(runtimeKey);
+    }
+  });
+}
+
 function parseYearFromDayKey(dayKey: string): number | null {
   const y = Number(dayKey.slice(0, 4));
   return Number.isFinite(y) && y >= 2000 && y <= 2100 ? y : null;
@@ -2685,15 +2703,13 @@ async function loadHomePageDataUncached() {
   });
   const history = buildBacktrackSeries(score);
   const overlayRuntimeKey = `overlay_years_${history.map((h) => h.year).join(",")}`;
-  const cachedOverlay = readRuntimeSnapshotFromDb<MarketYearlyOverlay>(overlayRuntimeKey);
-  const fallbackOverlay = cachedOverlay ?? buildOverlayFallbackFromHistory(history);
-  const marketOverlay = await withSoftTimeout(
-    () =>
-      timedAsync("home:fetchMarketYearlyOverlay", () =>
-        fetchMarketYearlyOverlay(history.map((h) => h.year)),
-      ),
-    cachedOverlay ? 120 : HOME_TIMEOUT_OVERLAY_MS,
-    () => fallbackOverlay,
+  const cachedOverlayRecord =
+    readRuntimeSnapshotRecordFromDb<MarketYearlyOverlay>(overlayRuntimeKey);
+  const marketOverlay = cachedOverlayRecord?.payload ?? buildOverlayFallbackFromHistory(history);
+  scheduleMarketOverlayRefresh(
+    history.map((h) => h.year),
+    overlayRuntimeKey,
+    !cachedOverlayRecord || Date.now() - cachedOverlayRecord.updatedAtMs >= MARKET_OVERLAY_REFRESH_MS,
   );
   const todayCalendarStats = buildTodayCalendarStats(
     items.slice(0, 20),
@@ -2808,17 +2824,20 @@ async function loadHomePageDataUncached() {
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    name: "Pokemon Hype Meter",
+    name: "Pokoin News",
     applicationCategory: "FinanceApplication",
     operatingSystem: "Web",
-    url: "https://monmeter.vercel.app/",
+    url: "https://news.pokoin.com/",
     description:
-      "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
+      "Pokoin News tracks Pokemon news, TCG market hype, crypto gaming signals, play-to-earn trends, collectible games and card market momentum.",
     publisher: {
       "@type": "Organization",
-      name: "Pokemon Hype Meter",
+      name: "Pokoin",
+      url: "https://pokoin.com/",
     },
     featureList: [
+      "Pokemon news and TCG headline tracking",
+      "Crypto gaming and play-to-earn trend monitoring",
       "Pokemon TCG market momentum tracking",
       "Search interest and sentiment monitoring",
       "Availability pressure and catalyst scoring",
@@ -3066,15 +3085,16 @@ function buildInstantHomePagePayload(): HomePagePayload {
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "WebApplication",
-    name: "Pokemon Hype Meter",
+    name: "Pokoin News",
     applicationCategory: "FinanceApplication",
     operatingSystem: "Web",
-    url: "https://monmeter.vercel.app/",
+    url: "https://news.pokoin.com/",
     description:
-      "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
+      "Pokoin's Pokemon TCG news and market signal hub, tracking headlines, demand, market momentum, availability pressure, and community sentiment.",
     publisher: {
       "@type": "Organization",
-      name: "Pokemon Hype Meter",
+      name: "Pokoin",
+      url: "https://pokoin.com/",
     },
     featureList: [
       "Pokemon TCG market momentum tracking",
@@ -3184,14 +3204,14 @@ export default async function Home() {
             <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">
-                  Pokemon Fear & Greed Remix
+                  Pokoin Newsroom
                 </p>
                 <h1 className="mt-2 text-3xl font-black tracking-tight md:text-5xl">
-                  Pokemon Hype Meter
+                  Pokoin News
           </h1>
                 <p className="mt-3 max-w-3xl text-sm text-slate-300 md:text-base">
-                  A real-time snapshot of Pokemon buzz, built from live headlines and
-                  trend signals.
+                  A real-time Pokemon TCG signal desk by Pokoin, built from live headlines,
+                  market context, search demand, and community pulse.
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <HomeReloadButton />
@@ -3214,6 +3234,10 @@ export default async function Home() {
               </Suspense>
             </div>
           </header>
+        </ScrollReveal>
+
+        <ScrollReveal delayMs={30}>
+          <AdSenseSlot label="Top advertisement" />
         </ScrollReveal>
 
         <ScrollReveal delayMs={60}>
@@ -3452,6 +3476,10 @@ export default async function Home() {
         </section>
         </ScrollReveal>
 
+        <ScrollReveal delayMs={75}>
+          <AdSenseSlot label="Mid-page advertisement" />
+        </ScrollReveal>
+
         <ScrollReveal delayMs={90}>
           <BacktrackMarketSection
             history={history}
@@ -3460,6 +3488,10 @@ export default async function Home() {
             market={market}
             deploymentSha={process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null}
           />
+        </ScrollReveal>
+
+        <ScrollReveal delayMs={105}>
+          <AdSenseSlot label="Market section advertisement" />
         </ScrollReveal>
 
         <ScrollReveal delayMs={120}>
@@ -3505,6 +3537,10 @@ export default async function Home() {
             initialDate={todayCalendarStats.date}
             initialData={todayCalendarStats}
           />
+        </ScrollReveal>
+
+        <ScrollReveal delayMs={165}>
+          <AdSenseSlot label="Calendar advertisement" />
         </ScrollReveal>
 
         <ScrollReveal delayMs={180}>

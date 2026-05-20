@@ -16,6 +16,13 @@ type Props = {
 
 const STORAGE_KEY = "hypemeter_last_card_highlight_v1";
 
+function pokoinCardUrl(card: CardHighlightData): string {
+  const fromCardUrl = card.cardUrl.match(/\/cards\/(\d{2,12})(?:[/?#-]|$)/i)?.[1];
+  const fromImageUrl = card.imageUrl.match(/\/uploads\/blueprints\/image\/(\d{2,12})\//i)?.[1];
+  const id = fromCardUrl ?? fromImageUrl;
+  return id ? `https://pokoin.com/${id}` : card.cardUrl;
+}
+
 function isCardHighlightData(value: unknown): value is CardHighlightData {
   if (!value || typeof value !== "object") return false;
   const row = value as Partial<CardHighlightData>;
@@ -37,20 +44,23 @@ export function CardHighlightPanel({ cardTraderBestSeller }: Props) {
     if (typeof window === "undefined") return;
 
     if (isCardHighlightData(cardTraderBestSeller)) {
-      setCachedCard(cardTraderBestSeller);
+      const update = window.setTimeout(() => setCachedCard(cardTraderBestSeller), 0);
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cardTraderBestSeller));
       } catch {
         /* ignore storage quota / privacy mode issues */
       }
-      return;
+      return () => window.clearTimeout(update);
     }
 
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (isCardHighlightData(parsed)) setCachedCard(parsed);
+      if (isCardHighlightData(parsed)) {
+        const update = window.setTimeout(() => setCachedCard(parsed), 0);
+        return () => window.clearTimeout(update);
+      }
     } catch {
       /* ignore malformed storage */
     }
@@ -64,11 +74,11 @@ export function CardHighlightPanel({ cardTraderBestSeller }: Props) {
       <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-4 lg:w-64">
         <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">Card Highlight</p>
         <a
-          href={shownCard.cardUrl}
+          href={pokoinCardUrl(shownCard)}
           target="_blank"
           rel="noreferrer"
           className="mt-2 flex min-h-0 flex-1 items-start gap-2.5 rounded-xl transition-colors hover:bg-slate-900/60"
-          title={isCachedFallback ? "Open cached fallback listing on CardTrader" : "Open this listing on CardTrader"}
+          title={isCachedFallback ? "Open cached highlighted card on Pokoin" : "Open this card on Pokoin"}
         >
           <CardTraderHighlightImage
             imageUrl={shownCard.imageUrl}
@@ -92,7 +102,7 @@ export function CardHighlightPanel({ cardTraderBestSeller }: Props) {
     <div className="flex h-full w-full max-w-full shrink-0 flex-col rounded-2xl border border-amber-400/30 bg-slate-950/80 p-4 lg:w-64">
       <p className="text-[10px] uppercase tracking-[0.14em] text-amber-300">Card Highlight</p>
       <div className="mt-2 flex min-h-0 flex-1 items-center rounded-xl border border-amber-400/20 bg-slate-900/60 px-2.5 py-2">
-        <p className="text-xs font-medium leading-snug text-amber-100/95">CardTrader under maintenance</p>
+        <p className="text-xs font-medium leading-snug text-amber-100/95">Card highlight temporarily unavailable</p>
       </div>
     </div>
   );

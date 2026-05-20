@@ -5,7 +5,7 @@ import profilePhoto from "../../../106628254.jpeg";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "About Monmeter: visual story, Pokemon gallery, creator profile, and how the hype engine works.",
+    "About Pokoin News: Pokemon news, TCG market signals, crypto gaming context, earn trends, news curation and how the hype engine works.",
   alternates: {
     canonical: "/about",
   },
@@ -57,10 +57,10 @@ export default function AboutPage() {
         </div>
         <div className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
           <section className="rounded-3xl border border-white/10 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
-            <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">MONMETER</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Pokemon Hype, made readable.</h1>
+            <p className="text-sm font-semibold tracking-[0.08em] text-fuchsia-300">POKOIN NEWS</p>
+            <h1 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">Pokemon TCG hype, made readable.</h1>
             <p className="mt-3 text-sm leading-7 text-slate-200">
-              Monmeter tracks daily Pokemon momentum with a signal mix built from news activity, social/search pulse,
+              Pokoin News tracks daily Pokemon momentum with a signal mix built from news activity, social/search pulse,
               and market context. Fast refreshes, clear score components, and visible source logic.
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-xs">
@@ -173,7 +173,7 @@ export default function AboutPage() {
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
           <h2 className="text-lg font-bold">Data Sources & Method</h2>
           <p className="mt-3 text-sm leading-7 text-slate-200">
-            Monmeter aggregates public data from multiple providers and computes an internal composite score.
+            Pokoin News aggregates public data from multiple providers and computes an internal composite score.
             External sources can be delayed, rate-limited, or temporarily unavailable, so fallback logic and caching
             are used to keep the page stable.
           </p>
@@ -199,7 +199,7 @@ export default function AboutPage() {
         <section className="mt-6 rounded-3xl border border-white/10 bg-slate-900/70 p-6">
           <h2 className="text-lg font-bold">Privacy & Caching</h2>
           <p className="mt-3 text-sm text-slate-200">
-            Monmeter does not require user accounts and does not ask for personal profile data.
+            Pokoin News does not require user accounts and does not ask for personal profile data.
           </p>
           <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
             <li>

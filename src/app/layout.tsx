@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PokoinFooter } from "@/components/PokoinFooter";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,14 +14,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://monmeter.vercel.app"),
+  metadataBase: new URL("https://news.pokoin.com"),
   title: {
-    default: "Pokemon Hype Meter",
-    template: "%s | Pokemon Hype Meter",
+    default: "Pokoin News - Pokemon News, Crypto Games & Earn Signals",
+    template: "%s | Pokoin News",
   },
   description:
-    "Composite Pokemon hype index based on search demand, market momentum, availability pressure, event catalysts, and community sentiment.",
+    "Pokoin News tracks Pokemon news, TCG market hype, crypto gaming signals, play-to-earn trends, collectible games and card market momentum in one live signal hub.",
   keywords: [
+    "pokoin news",
+    "pokoin pokemon",
+    "pokemon news",
+    "pokemon crypto",
+    "pokemon games",
+    "crypto games",
+    "play to earn games",
+    "earn crypto games",
+    "pokemon earn",
+    "tcg news",
     "pokemon hype",
     "pokemon tcg market",
     "pokemon sentiment index",
@@ -31,20 +42,27 @@ export const metadata: Metadata = {
   alternates: {
     canonical: "/",
   },
+  icons: {
+    icon: [
+      { url: "https://pokoin.com/pokoin-192.png", sizes: "192x192", type: "image/png" },
+      { url: "https://pokoin.com/pokoin-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "https://pokoin.com/pokoin-512.png", sizes: "512x512", type: "image/png" }],
+  },
   openGraph: {
     type: "website",
     url: "/",
-    title: "Pokemon Hype Meter",
+    title: "Pokoin News - Pokemon News, Crypto Games & Earn Signals",
     description:
-      "Live Pokemon hype index with market momentum, search demand, availability pressure, and event catalysts.",
-    siteName: "Pokemon Hype Meter",
+      "Pokemon TCG news, crypto gaming context, earn trends and market signals from Pokoin, with hype, demand, availability and catalyst tracking.",
+    siteName: "Pokoin News",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Pokemon Hype Meter",
+    title: "Pokoin News - Pokemon News, Crypto Games & Earn Signals",
     description:
-      "Track Pokemon hype with a composite index across sentiment, demand, and TCG market pressure.",
+      "Track Pokemon news, TCG hype, crypto games, earn trends and collector market pressure with Pokoin's live signal index.",
   },
   robots: {
     index: true,
@@ -69,7 +87,17 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full max-w-full overflow-x-clip antialiased`}
     >
-      <body className="flex min-h-full min-w-0 max-w-full flex-col overflow-x-clip">{children}</body>
+      <head>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4839405057855605"
+          crossOrigin="anonymous"
+        />
+      </head>
+      <body className="flex min-h-full min-w-0 max-w-full flex-col overflow-x-clip">
+        {children}
+        <PokoinFooter />
+      </body>
     </html>
   );
 }

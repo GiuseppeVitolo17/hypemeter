@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Debug · Monmeter",
+  title: "Debug · Pokoin News",
   robots: { index: false, follow: false },
 };
 
@@ -152,7 +152,7 @@ export default async function DebugPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-100 md:px-8">
       <div className="mx-auto max-w-4xl">
-        <h1 className="text-2xl font-bold text-cyan-300">Debug · Monmeter</h1>
+        <h1 className="text-2xl font-bold text-cyan-300">Debug · Pokoin News</h1>
         <p className="mt-2 text-sm text-slate-400">
           Internal diagnostics. Payloads are built server-side (same as{" "}
           <code className="rounded bg-slate-800 px-1">GET /api/debug/card-highlight-image</code> and{" "}

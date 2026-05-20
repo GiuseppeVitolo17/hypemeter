@@ -392,6 +392,26 @@ export function readRuntimeSnapshotFromDb<T>(key: string): T | null {
   }
 }
 
+export function readRuntimeSnapshotRecordFromDb<T>(
+  key: string,
+): { payload: T; updatedAt: string; updatedAtMs: number } | null {
+  const db = getDb("runtime");
+  const row = db
+    .prepare("SELECT payload_json, updated_at FROM runtime_snapshot WHERE key = ?")
+    .get(key) as { payload_json: string; updated_at: string } | undefined;
+  if (!row?.payload_json) return null;
+  try {
+    const updatedAtMs = Date.parse(row.updated_at);
+    return {
+      payload: JSON.parse(row.payload_json) as T,
+      updatedAt: row.updated_at,
+      updatedAtMs: Number.isFinite(updatedAtMs) ? updatedAtMs : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function upsertRuntimeSnapshotToDb(key: string, payload: unknown) {
   const db = getDb("runtime");
   db.prepare(`

@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://monmeter.vercel.app";
+  const baseUrl = "https://news.pokoin.com";
   const now = new Date();
 
   return [
@@ -11,6 +11,39 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "hourly",
       priority: 1,
     },
+    {
+      url: `${baseUrl}/about`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+    ...[
+      "live-event-signals",
+      "community-hype",
+      "market-heat",
+      "signal-quality",
+      "model-weights",
+      "sentiment-1m",
+      "sentiment-1y",
+      "sentiment-5y",
+      "social-google-search",
+      "social-reddit",
+      "social-youtube",
+      "social-facebook",
+      "social-threads",
+      "social-pokemon-official",
+      "component-search-interest",
+      "component-market-momentum",
+      "component-availability-pressure",
+      "component-release-catalyst",
+      "component-community-sentiment",
+      "component-product-stress",
+    ].map((topic) => ({
+      url: `${baseUrl}/learn/${topic}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.55,
+    })),
   ];
 }
 

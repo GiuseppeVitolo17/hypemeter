@@ -43,8 +43,8 @@ export default function HypeGauge({ score }: Props) {
   useEffect(() => {
     const media = typeof window !== "undefined" ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
     if (media?.matches) {
-      setAnimatedScore(target);
-      return;
+      const timeoutId = window.setTimeout(() => setAnimatedScore(target), 0);
+      return () => window.clearTimeout(timeoutId);
     }
 
     const durationMs = 1100;
@@ -62,9 +62,12 @@ export default function HypeGauge({ score }: Props) {
       }
     };
 
-    setAnimatedScore(0);
+    const resetId = window.setTimeout(() => setAnimatedScore(0), 0);
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      window.clearTimeout(resetId);
+      cancelAnimationFrame(rafId);
+    };
   }, [target]);
 
   const s = Math.max(0, Math.min(100, animatedScore));

@@ -20,6 +20,13 @@ export type CardTraderBestSeller = {
 export const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
 
 const JINA_PREFIX = "https://r.jina.ai/";
+const FALLBACK_CARD_HIGHLIGHT: CardTraderBestSeller = {
+  name: "Prince of the Sea Manaphy",
+  imageUrl:
+    "https://cdn.pokoin.com/264761_prince-of-the-sea-manaphy-unnumbered-10th-movie-commemoration-set.jpg",
+  cardUrl: "https://pokoin.com/264761",
+  fromPrice: "",
+};
 
 function dbg(...args: unknown[]) {
   if (process.env.DEBUG_CARDTRADER === "1") {
@@ -102,6 +109,18 @@ function looksLikeCardProductUrl(u: string): boolean {
   if (!/cardtrader\.com/i.test(n)) return false;
   if (/cardtrader\.com\/en\/pokemon\/?$/i.test(n)) return false;
   return /\/(cards|products|sell)\//i.test(n);
+}
+
+function blueprintIdFromCardTraderUrl(raw: string): string {
+  const n = normalizeCardtraderAssetUrl(raw);
+  const cardPath = n.match(/\/cards\/(\d{2,12})(?:[/?#-]|$)/i)?.[1];
+  if (cardPath) return cardPath;
+  return n.match(/\/uploads\/blueprints\/image\/(\d{2,12})\//i)?.[1] ?? "";
+}
+
+export function pokoinCardUrlFromCardTraderData(cardUrl: string, imageUrl: string): string {
+  const id = blueprintIdFromCardTraderUrl(cardUrl) || blueprintIdFromCardTraderUrl(imageUrl);
+  return id ? `https://pokoin.com/${id}` : normalizeCardtraderAssetUrl(cardUrl);
 }
 
 /** All plausible card / listing URLs (absolute or site-relative). */
@@ -329,7 +348,7 @@ export function parseCardTraderBestSellerFromText(fullText: string): CardTraderB
       ...result,
       name: sanitizeCardHighlightName(result.name),
       imageUrl: normalizeCardtraderAssetUrl(result.imageUrl),
-      cardUrl: normalizeCardtraderAssetUrl(result.cardUrl),
+      cardUrl: pokoinCardUrlFromCardTraderData(result.cardUrl, result.imageUrl),
     };
   }
   return result;
@@ -355,15 +374,15 @@ const fetchCardTraderPokemonBestSellerCached = unstable_cache(
     void dayKey;
     try {
       const text = await fetchJinaMarkdown();
-      if (!text) return null;
+      if (!text) return FALLBACK_CARD_HIGHLIGHT;
       const parsed = parseCardTraderBestSellerFromText(text);
       if (parsed?.imageUrl && process.env.DEBUG_CARDTRADER === "1") {
         dbg("parsed imageUrl host", new URL(parsed.imageUrl).hostname, "day", dayKey);
       }
-      return parsed;
+      return parsed ?? FALLBACK_CARD_HIGHLIGHT;
     } catch (e) {
       dbg("fetch error", e);
-      return null;
+      return FALLBACK_CARD_HIGHLIGHT;
     }
   },
   ["cardtrader-pokemon-best-seller-v2"],
