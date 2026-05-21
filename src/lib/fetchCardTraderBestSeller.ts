@@ -20,11 +20,12 @@ export type CardTraderBestSeller = {
 export const CARDTRADER_POKEMON_HUB = "https://www.cardtrader.com/en/pokemon";
 
 const JINA_PREFIX = "https://r.jina.ai/";
+const POKOIN_HOT_BLUEPRINTS_URL =
+  "https://pokoin.com/api/marketplace-hot-blueprints?window=24h&limit=1&includeCards=1";
 const FALLBACK_CARD_HIGHLIGHT: CardTraderBestSeller = {
-  name: "Prince of the Sea Manaphy",
-  imageUrl:
-    "https://cdn.pokoin.com/264761_prince-of-the-sea-manaphy-unnumbered-10th-movie-commemoration-set.jpg",
-  cardUrl: "https://pokoin.com/264761",
+  name: "Pokoin Card Reserve",
+  imageUrl: "",
+  cardUrl: "https://pokoin.com/marketplace",
   fromPrice: "",
 };
 
@@ -369,10 +370,58 @@ async function fetchJinaMarkdown(): Promise<string | null> {
   return res.text();
 }
 
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+export async function fetchPokoinHotBlueprintCard(): Promise<CardTraderBestSeller | null> {
+  const res = await fetch(POKOIN_HOT_BLUEPRINTS_URL, {
+    cache: "no-store",
+    headers: { "user-agent": "Mozilla/5.0 hypemeter-card-highlight" },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) return null;
+
+  const payload = (await res.json()) as {
+    blueprints?: Array<Record<string, unknown>>;
+    cards?: Array<Record<string, unknown>>;
+  };
+  const card = payload.cards?.[0];
+  const blueprint = payload.blueprints?.[0];
+  const id = firstString(card?.card_id, card?.id, blueprint?.blueprintId, blueprint?.id);
+  const name = firstString(card?.name, blueprint?.name);
+  const imageUrl = firstString(
+    card?.homepageImageUrl,
+    card?.homepage_image_url,
+    card?.image_url,
+    card?.cdn_image_url,
+    card?.preview_image_url,
+    blueprint?.imageUrl,
+    blueprint?.image_url,
+  );
+  if (!id || !name) return null;
+
+  const setName = firstString(card?.set_name, card?.set, blueprint?.set);
+  const number = firstString(card?.card_number, card?.number, blueprint?.number);
+  const label = [name, setName, number].filter(Boolean).join(" · ");
+  return {
+    name: label || name,
+    imageUrl,
+    cardUrl: `https://pokoin.com/${encodeURIComponent(id)}`,
+    fromPrice: "",
+  };
+}
+
 const fetchCardTraderPokemonBestSellerCached = unstable_cache(
   async (dayKey: string): Promise<CardTraderBestSeller | null> => {
     void dayKey;
     try {
+      const pokoinCard = await fetchPokoinHotBlueprintCard();
+      if (pokoinCard) return pokoinCard;
+
       const text = await fetchJinaMarkdown();
       if (!text) return FALLBACK_CARD_HIGHLIGHT;
       const parsed = parseCardTraderBestSellerFromText(text);
@@ -385,7 +434,7 @@ const fetchCardTraderPokemonBestSellerCached = unstable_cache(
       return FALLBACK_CARD_HIGHLIGHT;
     }
   },
-  ["cardtrader-pokemon-best-seller-v2"],
+  ["cardtrader-pokemon-best-seller-v3"],
   { revalidate: CARD_TRADER_HIGHLIGHT_CACHE_SEC, tags: [HYPEMETER_CACHE_TAG_HOME] },
 );
 

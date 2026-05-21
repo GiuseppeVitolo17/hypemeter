@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   extractBestSellersSection,
+  fetchPokoinHotBlueprintCard,
   parseCardTraderBestSellerFromText,
   pickBestCardImageUrl,
   pokoinCardUrlFromCardTraderData,
@@ -27,6 +28,38 @@ describe("sanitizeCardHighlightName", () => {
 });
 
 describe("fetchCardTraderBestSeller", () => {
+  it("prefers Pokoin hot blueprint data for the highlighted card", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          blueprints: [{ blueprintId: "316600", name: "Leafeon", set: "Prismatic Evolutions", number: "005/131" }],
+          cards: [
+            {
+              card_id: "316600",
+              name: "Leafeon",
+              set_name: "Prismatic Evolutions",
+              card_number: "005/131",
+              image_url: "https://cdn.pokoin.com/316600_leafeon-005-131-prismatic-evolutions.jpg",
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    try {
+      const card = await fetchPokoinHotBlueprintCard();
+      expect(card).toEqual({
+        name: "Leafeon · Prismatic Evolutions · 005/131",
+        imageUrl: "https://cdn.pokoin.com/316600_leafeon-005-131-prismatic-evolutions.jpg",
+        cardUrl: "https://pokoin.com/316600",
+        fromPrice: "",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("extractBestSellersSection finds markdown block", () => {
     const md = `# Hub\n## Best Sellers\n\n![x](https://cdn.example.com/a.png) [Label](https://www.cardtrader.com/en/cards/1)\n\n## Other`;
     const s = extractBestSellersSection(md);

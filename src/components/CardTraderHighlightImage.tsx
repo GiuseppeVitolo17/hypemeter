@@ -26,6 +26,14 @@ type Props = {
 
 type LoadMode = "proxy" | "placeholder";
 
+function shouldLoadDirectly(src: string): boolean {
+  try {
+    return new URL(src).hostname === "cdn.pokoin.com";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Always load through same-origin `/api/card-highlight-image` so CardTrader never sees the
  * visitor's browser/referrer. If the proxy fails, fall back to a local placeholder.
@@ -51,13 +59,18 @@ export function CardTraderHighlightImage({ imageUrl, alt, width, height, classNa
     );
   }
 
-  /** Must match SSR `imageUrl` or the proxy can fetch a different “current best seller” than the label. */
-  const proxySrc = `/api/card-highlight-image?url=${encodeURIComponent(direct)}`;
+  /**
+   * Pokoin CDN allows browser image loads but returns 403 to Vercel/server fetches.
+   * CardTrader assets still use the same-origin proxy to avoid leaking visitor referrers.
+   */
+  const src = shouldLoadDirectly(direct)
+    ? direct
+    : `/api/card-highlight-image?url=${encodeURIComponent(direct)}`;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- same-origin image proxy avoids leaking referrers.
     <img
-      src={proxySrc}
+      src={src}
       alt={alt || "Card highlight"}
       width={width}
       height={height}
