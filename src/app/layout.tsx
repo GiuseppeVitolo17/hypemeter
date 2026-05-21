@@ -44,10 +44,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: "https://pokoin.com/favicon.ico", sizes: "any" },
+      { url: "https://pokoin.com/favicon-96x96.png", sizes: "96x96", type: "image/png" },
       { url: "https://pokoin.com/pokoin-192.png", sizes: "192x192", type: "image/png" },
-      { url: "https://pokoin.com/pokoin-512.png", sizes: "512x512", type: "image/png" },
+      { url: "https://pokoin.com/pokoin-1024.png", sizes: "1024x1024", type: "image/png" },
     ],
-    apple: [{ url: "https://pokoin.com/pokoin-512.png", sizes: "512x512", type: "image/png" }],
+    apple: [{ url: "https://pokoin.com/pokoin-1024.png", sizes: "1024x1024", type: "image/png" }],
   },
   openGraph: {
     type: "website",
